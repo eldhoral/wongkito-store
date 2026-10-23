@@ -4,11 +4,27 @@ import { api } from '../api/client';
 import type { Settings as SettingsData, Status } from '../api/types';
 import { formatAge } from '../lib/format';
 
-const FIELDS: { key: keyof SettingsData; label: string; step: string }[] = [
-  { key: 'min_margin', label: 'Minimum margin (Rp)', step: '1' },
-  { key: 'fee_pct', label: 'Fallback fee (%)', step: 'any' },
-  { key: 'balance_alert', label: 'Balance alert (Rp)', step: '1' },
+const FIELDS: { key: keyof SettingsData; label: string; step: string; whole: boolean }[] = [
+  { key: 'min_margin', label: 'Minimum margin (Rp)', step: '1', whole: true },
+  { key: 'fee_pct', label: 'Fallback fee (%)', step: 'any', whole: false },
+  { key: 'balance_alert', label: 'Balance alert (Rp)', step: '1', whole: true },
 ];
+
+// Mirrors the server: min_margin/balance_alert are int64 (>= 0), fee_pct is 0..100.
+function validate(form: Record<string, string>): { error: string } | { body: Record<string, number> } {
+  const body: Record<string, number> = {};
+  for (const f of FIELDS) {
+    const name = f.label.replace(/ \(.*\)$/, '');
+    const raw = (form[f.key] ?? '').trim();
+    if (raw === '') return { error: `${name} is required` };
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return { error: `${name} must be a number` };
+    if (f.whole && !Number.isSafeInteger(n)) return { error: `${name} must be a whole number` };
+    if (n < 0 || (f.key === 'fee_pct' && n > 100)) return { error: `${name} must be ${f.key === 'fee_pct' ? 'between 0 and 100' : '0 or more'}` };
+    body[f.key] = n;
+  }
+  return { body };
+}
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : 'Failed');
 
@@ -21,8 +37,9 @@ export function Settings() {
     if (settings.data) setForm(Object.fromEntries(FIELDS.map((f) => [f.key, String(settings.data[f.key])])));
   }, [settings.data]);
 
+  const [invalid, setInvalid] = useState('');
   const save = useMutation({
-    mutationFn: () => api.send<SettingsData>('PUT', '/api/settings', Object.fromEntries(FIELDS.map((f) => [f.key, Number(form[f.key])]))),
+    mutationFn: (body: Record<string, number>) => api.send<SettingsData>('PUT', '/api/settings', body),
     onSuccess: (d) => qc.setQueryData(['settings'], d),
   });
   const tg = useMutation({ mutationFn: () => api.send('POST', '/api/settings/telegram-test') });
@@ -57,18 +74,25 @@ export function Settings() {
               step={f.step}
               min="0"
               value={form[f.key] ?? ''}
-              onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+              onChange={(e) => {
+                setInvalid('');
+                setForm({ ...form, [f.key]: e.target.value });
+              }}
               className="tn mt-1 h-11 w-full rounded-xl bg-well px-3.5 text-[14px] outline-none"
             />
           </label>
         ))}
         <p role="alert" className="min-h-5 text-[12.5px] text-stop">
-          {save.error ? errText(save.error) : ''}
+          {invalid || (save.error ? errText(save.error) : '')}
         </p>
         <button
           type="button"
           disabled={save.isPending || !settings.data}
-          onClick={() => save.mutate()}
+          onClick={() => {
+            const v = validate(form);
+            setInvalid('error' in v ? v.error : '');
+            if ('body' in v) save.mutate(v.body);
+          }}
           className="h-12 w-full rounded-xl bg-hi text-[15px] font-semibold text-white disabled:opacity-40"
         >
           {save.isPending ? 'Saving…' : save.isSuccess ? 'Saved' : 'Save'}
