@@ -42,6 +42,11 @@ func (e *Engine) Intake(ctx context.Context, o itemku.Order) (bool, error) {
 		return false, err
 	}
 	createdRow := affected > 0
+	if createdRow {
+		if err := e.LearnFee(ctx, o); err != nil {
+			return true, err
+		}
+	}
 
 	if err := e.Route(ctx, id); err != nil {
 		return createdRow, err

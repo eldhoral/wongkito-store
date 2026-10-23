@@ -189,3 +189,11 @@ func isFinal(state string) bool {
 	}
 	return false
 }
+
+// alert is best-effort: a Telegram outage must never stop the relay.
+func (e *Engine) alert(ctx context.Context, text string, urgent bool) {
+	if e.TG == nil {
+		return
+	}
+	_ = e.TG.Send(ctx, text, urgent)
+}
