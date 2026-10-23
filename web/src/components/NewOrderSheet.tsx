@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Drawer } from 'vaul';
 import { api } from '../api/client';
-import type { DirectReq, OrderDetail, OrderState, PricelistItem, ProductGroup, ProductView } from '../api/types';
+import type { DirectReq, DirectResult, OrderDetail, OrderState, PricelistItem, ProductGroup, ProductView } from '../api/types';
 import { formatRp } from '../lib/format';
 import { reasonLabel } from '../lib/reasons';
 import { keys, render } from '../lib/tmpl';
@@ -55,6 +55,7 @@ function NewOrderForm({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [orderId, setOrderId] = useState<string | null>(null);
+  const [note, setNote] = useState('');
 
   const q = search.trim();
   const products = useQuery({ queryKey: ['products'], queryFn: () => api.get<ProductGroup[]>('/api/products') });
@@ -112,18 +113,18 @@ function NewOrderForm({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError('');
     try {
-      const { id } = await api.send<{ id: string }>('POST', '/api/orders/direct', req);
+      const { id, error: buyError } = await api.send<DirectResult>('POST', '/api/orders/direct', req);
+      // The order exists even if the buy errored; follow it so no second submit can double-buy.
+      setNote(buyError ?? '');
       setOrderId(id);
     } catch (e) {
-      // The server inserts the order before buying, so a failed buy may still be in the Queue.
       setError(e instanceof Error ? e.message : 'Request failed');
-      void qc.invalidateQueries({ queryKey: ['queue'] });
     } finally {
       setBusy(false);
     }
   }
 
-  if (orderId !== null) return <Result order={order.data} failed={order.isError} onClose={onClose} />;
+  if (orderId !== null) return <Result order={order.data} note={note} failed={order.isError} onClose={onClose} />;
 
   return (
     <>
@@ -272,8 +273,9 @@ function NewOrderForm({ onClose }: { onClose: () => void }) {
 
 const BTN = 'flex h-12 w-full items-center justify-center rounded-xl bg-hi text-[15px] font-semibold text-white';
 
-function Result({ order, failed, onClose }: { order?: OrderDetail; failed: boolean; onClose: () => void }) {
+function Result({ order, note, failed, onClose }: { order?: OrderDetail; note: string; failed: boolean; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [manual, setManual] = useState('');
   const sns = (order?.attempts ?? []).filter((a) => a.status === 'Sukses' && a.sn).map((a) => a.sn);
   const waiting = !order || !FINAL.includes(order.state);
 
@@ -283,6 +285,11 @@ function Result({ order, failed, onClose }: { order?: OrderDetail; failed: boole
         {failed && !order && (
           <p role="alert" className="text-[13px] text-stop">
             Could not load the order. Check the Queue.
+          </p>
+        )}
+        {note && (
+          <p role="alert" className="mb-3 text-[12.5px] text-stop">
+            {note}
           </p>
         )}
         {waiting && !failed && <p role="status" className="text-[14px] text-mid">Buying…</p>}
@@ -306,6 +313,16 @@ function Result({ order, failed, onClose }: { order?: OrderDetail; failed: boole
             <b>{reasonLabel(order.reason)}.</b> {order.detail} Handle it from the Queue.
           </p>
         )}
+        {manual && (
+          <textarea
+            readOnly
+            aria-label="Message to copy"
+            value={manual}
+            rows={4}
+            onFocus={(e) => e.currentTarget.select()}
+            className={`${FIELD} mt-4 h-auto py-2.5 font-mono`}
+          />
+        )}
         {(order?.state === 'rejected' || order?.state === 'cancelled') && (
           <p className="mt-4 text-[13px] text-stop">
             {order.state === 'rejected' ? 'Rejected' : 'Cancelled'}. {order.detail}
@@ -321,8 +338,14 @@ function Result({ order, failed, onClose }: { order?: OrderDetail; failed: boole
           <button
             type="button"
             onClick={async () => {
-              await navigator.clipboard.writeText(deliveryText(order, sns));
-              setCopied(true);
+              const text = deliveryText(order, sns);
+              try {
+                await navigator.clipboard.writeText(text);
+                setCopied(true);
+              } catch {
+                // no clipboard (non-HTTPS) or denied: show the text to copy by hand
+                setManual(text);
+              }
             }}
             className={`${BTN} mb-1`}
           >

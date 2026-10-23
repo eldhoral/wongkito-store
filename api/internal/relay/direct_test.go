@@ -148,3 +148,27 @@ func TestDeliveryText(t *testing.T) {
 		t.Fatalf("DeliveryText = %q, want %q", got, want)
 	}
 }
+
+func TestDirectBuyErrorStillReturnsID(t *testing.T) {
+	e, _, _, _ := newTestEngine(t)
+	seedProduct(t, e, 63, "auto", "regular")
+	seedSKU(t, e, 63, 0, "primary")
+	seedPrice(t, e, "primary", "seller-a", 10000, true)
+	seedTemplate(t, e, "seller-a", "MLBB", "{player_id}")
+	// Break the buy step (after the order insert) so BuyManual errors.
+	mustExec(t, e, `DROP TABLE attempts`)
+
+	id, err := e.CreateDirect(context.Background(), DirectReq{
+		ProductID: 63,
+		Fields:    map[string]string{"player_id": "999"},
+	})
+	if err == nil {
+		t.Fatal("CreateDirect error = nil, want the buy error")
+	}
+	if id == "" {
+		t.Fatalf("id is empty, want the inserted order id (err = %v)", err)
+	}
+	if o, lerr := e.loadOrder(context.Background(), id); lerr != nil || o == nil {
+		t.Fatalf("order %s not stored: %v", id, lerr)
+	}
+}

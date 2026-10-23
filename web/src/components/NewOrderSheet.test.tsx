@@ -125,4 +125,33 @@ describe('NewOrderSheet', () => {
     await user.click(await screen.findByRole('button', { name: /copy message/i }));
     expect(writeText).toHaveBeenCalledWith('172 Diamonds\nID: 12345678|1234\nSN: SN-777');
   });
+
+  it('copyFallsBackToTextareaWithoutClipboard', async () => {
+    const user = userEvent.setup();
+    setup();
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    await pickProduct(user);
+    await user.type(screen.getByLabelText('player_id'), '1');
+    await user.type(screen.getByLabelText('zone_id'), '2');
+    await user.click(screen.getByRole('button', { name: /buy & deliver/i }));
+    await user.click(await screen.findByRole('button', { name: /copy message/i }));
+    const box = (await screen.findByLabelText('Message to copy')) as HTMLTextAreaElement;
+    expect(box.readOnly).toBe(true);
+    expect(box.value).toBe('172 Diamonds\nID: 12345678|1234\nSN: SN-777');
+  });
+
+  it('buyErrorWithIdFollowsOrderAndHidesSubmit', async () => {
+    const user = userEvent.setup();
+    setup(delivered({ state: 'needs_you', reason: 'auto_failed', detail: 'Seller A rejected: rc 44.', attempts: [] }));
+    send.mockResolvedValue({ id: 'dir-1', error: 'buy exploded' });
+    await pickProduct(user);
+    await user.type(screen.getByLabelText('player_id'), '1');
+    await user.type(screen.getByLabelText('zone_id'), '2');
+    await user.click(screen.getByRole('button', { name: /buy & deliver/i }));
+    expect(await screen.findByText('buy exploded')).toBeTruthy();
+    expect(await screen.findByText(/handle it from the queue/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /buy & deliver/i })).toBeNull();
+    expect(get).toHaveBeenCalledWith('/api/orders/dir-1');
+    expect(send).toHaveBeenCalledTimes(1);
+  });
 });

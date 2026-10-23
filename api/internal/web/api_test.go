@@ -241,3 +241,29 @@ func TestTemplateRejectsNoPlaceholder(t *testing.T) {
 		t.Fatalf("templates = %d, want none", count)
 	}
 }
+
+func TestCreateDirectBuyErrorKeepsID(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	seedAPIProduct(t, s, 70, "MLBB", "auto")
+	seedAPISKU(t, s, 70, 0, "primary")
+	seedAPIPrice(t, s, "primary", "seller-a", 10000)
+	seedAPITemplate(t, s, "seller-a", "MLBB", "{player_id}")
+	apiExec(t, s, `DROP TABLE attempts`) // the buy step fails after the order is inserted
+
+	rr := apiDo(t, s, "POST", "/api/orders/direct", relay.DirectReq{ProductID: 70, Fields: map[string]string{"player_id": "999"}})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rr.Code, rr.Body)
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got["id"] == "" || got["error"] == "" {
+		t.Fatalf("body = %v, want id and error", got)
+	}
+
+	rr = apiDo(t, s, "POST", "/api/orders/direct", relay.DirectReq{ProductID: 999})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("pre-insert failure status = %d, want 400", rr.Code)
+	}
+}

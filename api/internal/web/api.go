@@ -148,11 +148,20 @@ func (s *server) createDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, err := s.relay.CreateDirect(r.Context(), req)
-	if err != nil {
+	if id == "" {
+		if err == nil {
+			err = errors.New("direct order was not created")
+		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+	// The order exists even if the buy errored. Return its id so the UI follows
+	// the order instead of the owner re-submitting (a second buy).
+	res := map[string]string{"id": id}
+	if err != nil {
+		res["error"] = err.Error()
+	}
+	writeJSON(w, http.StatusOK, res)
 }
 
 func (s *server) getHistory(w http.ResponseWriter, r *http.Request) {

@@ -141,6 +141,12 @@ export interface DirectReq {
   paidPrice?: number;
 }
 
+// error is set when the order was created but the buy step failed.
+export interface DirectResult {
+  id: string;
+  error?: string;
+}
+
 export interface BuyReq {
   sku?: string;
   customerNo?: string;
