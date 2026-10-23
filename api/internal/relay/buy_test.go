@@ -52,8 +52,12 @@ func TestNoSecondBuyWhilePending(t *testing.T) {
 		t.Fatalf("state = %s, want processing", state)
 	}
 	ik.orders[31] = itemku.Order{OrderID: 31, Status: "REQUIRE_PROCESS"}
-	if err := e.BuyManual(context.Background(), id, BuyOpts{}); err != nil {
-		t.Fatalf("BuyManual: %v", err)
+	err := e.BuyManual(context.Background(), id, BuyOpts{})
+	if err == nil || !strings.Contains(err.Error(), "already being processed") {
+		t.Fatalf("BuyManual error = %v, want already being processed", err)
+	}
+	if state, _ := orderState(t, e, id); state != StateProcessing {
+		t.Fatalf("state after refused buy = %s, want processing", state)
 	}
 	if df.topupCount() != 1 {
 		t.Fatalf("Topup calls = %d, want 1", df.topupCount())
@@ -82,8 +86,8 @@ func TestTransportErrorLeavesUnknownAndBlocks(t *testing.T) {
 		t.Fatalf("attempt status = %s, want unknown", status)
 	}
 	ik.orders[32] = itemku.Order{OrderID: 32, Status: "REQUIRE_PROCESS"}
-	if err := e.BuyManual(context.Background(), id, BuyOpts{}); err != nil {
-		t.Fatalf("BuyManual: %v", err)
+	if err := e.BuyManual(context.Background(), id, BuyOpts{}); err == nil {
+		t.Fatal("BuyManual error = nil, want refusal while processing")
 	}
 	if df.topupCount() != 1 {
 		t.Fatalf("Topup calls = %d, want 1", df.topupCount())

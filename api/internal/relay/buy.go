@@ -158,6 +158,12 @@ func (e *Engine) BuyManual(ctx context.Context, id string, opts BuyOpts) error {
 	if isFinal(o.State) {
 		return nil
 	}
+	// A stale screen can send Buy for an order the relay already moved on.
+	// The attempts guard stops a second purchase; this keeps the state from regressing.
+	switch o.State {
+	case StateBuying, StateProcessing, StateDelivering:
+		return fmt.Errorf("relay: order %s is already being processed", id)
+	}
 	if o.Source == "itemku" {
 		if !o.ItemkuOrderID.Valid {
 			return fmt.Errorf("relay: itemku order %s has no itemku id", id)

@@ -187,33 +187,29 @@ export function FocusCard({ order, now, onEditing, onDone }: Props) {
             </button>
           </div>
           {otherOpen && (
-            <ul role="listbox" aria-label="Other seller" className="mt-1 grid gap-1.5">
-              {options.map((o) => {
-                const disabled = o.templateError !== null;
-                return (
-                  <li
-                    key={o.sku}
-                    role="option"
-                    aria-selected={o.sku === sku}
-                    aria-disabled={disabled}
-                    tabIndex={disabled ? -1 : 0}
+            <ul aria-label="Other seller" className="mt-1 grid gap-1.5">
+              {options.map((o) => (
+                <li key={o.sku}>
+                  <button
+                    type="button"
+                    aria-pressed={o.sku === sku}
+                    disabled={o.templateError !== null}
                     onClick={() => {
-                      if (disabled) return;
                       setSku(o.sku);
                       setCustomerNo(o.customerNo ?? '');
                       setNoCap(false);
                       setOtherOpen(false);
                     }}
-                    className={`flex min-h-11 cursor-pointer items-center justify-between gap-3 rounded-xl px-3.5 py-2 text-[13px] ring-1 ring-line aria-disabled:cursor-not-allowed aria-disabled:opacity-60 aria-selected:bg-well`}
+                    className="flex min-h-11 w-full items-center justify-between gap-3 rounded-xl px-3.5 py-2 text-left text-[13px] ring-1 ring-line disabled:opacity-60 aria-pressed:bg-well"
                   >
                     <span className="min-w-0">
                       <b className="font-semibold">{o.seller}</b> <span className="font-mono text-lo">{o.sku}</span>
-                      {disabled && <span className="block text-xs text-stop">{o.templateError}</span>}
+                      {o.templateError !== null && <span className="block text-xs text-stop">{o.templateError}</span>}
                     </span>
                     <span className="tn shrink-0 text-mid">{formatRp(o.price)}</span>
-                  </li>
-                );
-              })}
+                  </button>
+                </li>
+              ))}
               {options.length === 0 && <li className="px-1 text-xs text-lo">No other sellers mapped.</li>}
             </ul>
           )}

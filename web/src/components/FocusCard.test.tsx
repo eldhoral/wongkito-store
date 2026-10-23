@@ -64,7 +64,7 @@ describe('FocusCard', () => {
     const user = userEvent.setup();
     setup(order);
     await user.click(await screen.findByRole('button', { name: /other seller/i }));
-    await user.click(await screen.findByRole('option', { name: /Seller B/ }));
+    await user.click(await screen.findByRole('button', { name: /Seller B/ }));
     expect((screen.getByLabelText(/customer number/i) as HTMLInputElement).value).toBe('123456781234');
   });
 
@@ -73,7 +73,7 @@ describe('FocusCard', () => {
     setup(order);
     expect(screen.queryByLabelText(/buy at a loss/i)).toBeNull();
     await user.click(await screen.findByRole('button', { name: /other seller/i }));
-    await user.click(await screen.findByRole('option', { name: /Seller B/ }));
+    await user.click(await screen.findByRole('button', { name: /Seller B/ }));
     await user.click(screen.getByLabelText(/buy at a loss/i));
     send.mockResolvedValue({ ok: true });
     await user.click(screen.getByRole('button', { name: /buy & deliver/i }));
@@ -90,8 +90,8 @@ describe('FocusCard', () => {
     const user = userEvent.setup();
     setup(order, [opt('A', 'Seller A', '1', 1), opt('C', 'Seller C', null, null, 'missing zone')]);
     await user.click(await screen.findByRole('button', { name: /other seller/i }));
-    const c = await screen.findByRole('option', { name: /Seller C/ });
-    expect(c.getAttribute('aria-disabled')).toBe('true');
+    const c = await screen.findByRole('button', { name: /Seller C/ });
+    expect((c as HTMLButtonElement).disabled).toBe(true);
     expect(c.textContent).toContain('missing zone');
   });
 
