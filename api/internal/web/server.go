@@ -51,7 +51,11 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("POST /hooks/digiflazz", s.digiflazzHook)
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.logout)
-	mux.Handle("/api/", s.requireAuth(http.HandlerFunc(s.apiNotFound)))
+	if s.relay != nil {
+		mux.Handle("/api/", s.requireAuth(s.apiMux()))
+	} else {
+		mux.Handle("/api/", s.requireAuth(http.HandlerFunc(s.apiNotFound)))
+	}
 	mux.Handle("/", s.staticHandler())
 	return mux
 }

@@ -17,14 +17,14 @@ import (
 // DirectReq is an owner-entered WhatsApp order. Give either ProductID (to use
 // that product's primary template and fields) or SKU plus a final CustomerNo.
 type DirectReq struct {
-	ProductID  int64
-	SKU        string
-	Fields     map[string]string
-	CustomerNo string
-	Quantity   int64
-	BuyerName  string
-	BuyerWA    string
-	PaidPrice  int64
+	ProductID  int64             `json:"productId"`
+	SKU        string            `json:"sku"`
+	Fields     map[string]string `json:"fields"`
+	CustomerNo string            `json:"customerNo"`
+	Quantity   int64             `json:"quantity"`
+	BuyerName  string            `json:"buyerName"`
+	BuyerWA    string            `json:"buyerWa"`
+	PaidPrice  int64             `json:"paidPrice"`
 }
 
 // CreateDirect inserts a direct order and buys it immediately. The owner is the
