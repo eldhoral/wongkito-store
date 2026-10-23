@@ -64,6 +64,20 @@ type TxResult struct {
 	BuyerLastSaldo flexibleFloat `json:"buyer_last_saldo"`
 }
 
+// ResultError is a non-2xx response that still carries a definitive
+// transaction status. Only the first send of a ref_id may trust Result: on a
+// re-send the same shape can be a request-level failure (bad signature, IP not
+// whitelisted, rate limit), not the transaction's own outcome.
+type ResultError struct {
+	HTTPStatus int
+	Result     TxResult
+}
+
+func (e *ResultError) Error() string {
+	return fmt.Sprintf("digiflazz: HTTP %d: status %s rc %s: %s",
+		e.HTTPStatus, e.Result.Status, e.Result.RC, e.Result.Message)
+}
+
 // TopupReq is one purchase request. MaxPrice is omitted when zero; Testing
 // is sent only when true.
 type TopupReq struct {
@@ -147,10 +161,13 @@ func (c *Client) post(ctx context.Context, path string, body any) (json.RawMessa
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		// Digiflazz can send a definitive transaction result (e.g. Gagal) with a
-		// non-2xx status. Treat it as the result; otherwise the attempt would
-		// stay unknown forever.
+		// non-2xx status. Return it as a typed error: the caller decides whether
+		// it is trustworthy (first send) or not (re-check).
 		if data, ok := finalTxData(respBody); ok {
-			return data, nil
+			var result TxResult
+			if json.Unmarshal(data, &result) == nil {
+				return nil, &ResultError{HTTPStatus: resp.StatusCode, Result: result}
+			}
 		}
 		return nil, fmt.Errorf("digiflazz: %s: HTTP %d: %s", path, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}

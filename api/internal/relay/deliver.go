@@ -110,7 +110,9 @@ func (e *Engine) RecheckPending(ctx context.Context) error {
 			Testing:    e.DryRun,
 		})
 		if err != nil {
-			continue // still unknown; try again next tick
+			// Includes *digiflazz.ResultError: on a re-send a non-2xx "Gagal" can be
+			// a request-level failure, so never apply it. Still open; retry next tick.
+			continue
 		}
 		if err := e.ApplyTx(ctx, r); err != nil && firstErr == nil {
 			firstErr = err

@@ -407,3 +407,32 @@ func setupAutoOrderNoSeed(t *testing.T, e *Engine, productID, itemkuID int64) st
 	mustExec(t, e, `UPDATE orders SET customer_no = '123', sku_override = 'primary' WHERE id = ?`, id)
 	return id
 }
+
+func TestFirstSendResultErrorGagalSettles(t *testing.T) {
+	e, _, df, tg := newTestEngine(t)
+	df.topupFn = func(r digiflazz.TopupReq) (digiflazz.TxResult, error) {
+		return digiflazz.TxResult{}, &digiflazz.ResultError{
+			HTTPStatus: 400,
+			Result:     digiflazz.TxResult{RefID: r.RefID, SKU: r.SKU, Status: "Gagal", RC: "44", Message: "wrong number"},
+		}
+	}
+	id := setupAutoOrder(t, e, "regular", 51)
+
+	if err := e.BuyAuto(context.Background(), id); err != nil {
+		t.Fatalf("BuyAuto: %v", err)
+	}
+	var status, rc string
+	if err := e.DB.DB.QueryRow(`SELECT status, rc FROM attempts WHERE order_id = ?`, id).Scan(&status, &rc); err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if status != "Gagal" || rc != "44" {
+		t.Fatalf("attempt status/rc = %s/%s, want Gagal/44", status, rc)
+	}
+	state, reason := orderState(t, e, id)
+	if state != StateNeedsYou || reason != ReasonAutoFailed {
+		t.Fatalf("state/reason = %s/%s, want needs_you/auto_failed", state, reason)
+	}
+	if got := len(tg.messages()); got != 1 {
+		t.Fatalf("Telegram messages = %d, want 1", got)
+	}
+}

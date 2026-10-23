@@ -239,3 +239,42 @@ func TestLongOpenAttemptAlertsOnce(t *testing.T) {
 		t.Fatalf("messages = %#v, want one 30-minute warning", msgs)
 	}
 }
+
+func TestRecheckResultErrorKeepsAttemptOpen(t *testing.T) {
+	e, _, df, tg := newTestEngine(t)
+	df.topupFn = func(r digiflazz.TopupReq) (digiflazz.TxResult, error) {
+		// A request-level failure (e.g. IP not whitelisted) answered as non-2xx + Gagal.
+		return digiflazz.TxResult{}, &digiflazz.ResultError{
+			HTTPStatus: 403,
+			Result:     digiflazz.TxResult{RefID: r.RefID, Status: "Gagal", RC: "45", Message: "ip not allowed"},
+		}
+	}
+	id := setupAutoOrder(t, e, "regular", 50)
+	mustExec(t, e, `UPDATE orders SET state = 'processing' WHERE id = ?`, id)
+	insertAttemptRow(t, e, "r1", id, 0, 1, "primary", "123", "Pending", testNow.Unix()-120)
+
+	if err := e.RecheckPending(context.Background()); err != nil {
+		t.Fatalf("RecheckPending: %v", err)
+	}
+	var status string
+	if err := e.DB.DB.QueryRow(`SELECT status FROM attempts WHERE ref_id = 'r1'`).Scan(&status); err != nil {
+		t.Fatalf("attempt: %v", err)
+	}
+	if status != "Pending" {
+		t.Fatalf("attempt status = %s, want Pending (re-check ResultError must not settle it)", status)
+	}
+	if state, _ := orderState(t, e, id); state != StateProcessing {
+		t.Fatalf("order state = %s, want processing", state)
+	}
+	if got := len(tg.messages()); got != 0 {
+		t.Fatalf("alerts = %d, want 0", got)
+	}
+
+	// The real result arrives later by webhook and still settles the order.
+	if err := e.ApplyTx(context.Background(), digiflazz.TxResult{RefID: "r1", Status: "Sukses", SN: "SN1"}); err != nil {
+		t.Fatalf("ApplyTx: %v", err)
+	}
+	if state, _ := orderState(t, e, id); state != StateDelivered {
+		t.Fatalf("order state after webhook = %s, want delivered", state)
+	}
+}

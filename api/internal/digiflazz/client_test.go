@@ -3,9 +3,11 @@ package digiflazz_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"wongkito/api/internal/digiflazz"
@@ -169,7 +171,7 @@ func TestTransportErrorReturnsEmptyResult(t *testing.T) {
 	}
 }
 
-func TestTopupDefinitiveResultOnNon2xx(t *testing.T) {
+func TestTopupNon2xxWithStatusIsResultError(t *testing.T) {
 	body := `{"data":{"ref_id":"r1","status":"Gagal","rc":"44","message":"bad","buyer_last_saldo":"10000.50"}}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
@@ -178,12 +180,17 @@ func TestTopupDefinitiveResultOnNon2xx(t *testing.T) {
 	defer srv.Close()
 
 	c := &digiflazz.Client{Username: "u", APIKey: "k", BaseURL: srv.URL}
-	got, err := c.Topup(context.Background(), digiflazz.TopupReq{SKU: "A", CustomerNo: "1", RefID: "r1"})
-	if err != nil {
-		t.Fatalf("Topup: %v, want the Gagal result", err)
+	_, err := c.Topup(context.Background(), digiflazz.TopupReq{SKU: "A", CustomerNo: "1", RefID: "r1"})
+	var resErr *digiflazz.ResultError
+	if !errors.As(err, &resErr) {
+		t.Fatalf("Topup error = %v, want *ResultError", err)
 	}
-	if got.Status != "Gagal" || got.RC != "44" || got.BuyerLastSaldo != 10000.50 {
-		t.Fatalf("result = %#v, want Gagal rc 44 saldo 10000.50", got)
+	got := resErr.Result
+	if resErr.HTTPStatus != http.StatusBadRequest || got.Status != "Gagal" || got.RC != "44" || got.BuyerLastSaldo != 10000.50 {
+		t.Fatalf("ResultError = %d %#v, want 400 Gagal rc 44 saldo 10000.50", resErr.HTTPStatus, got)
+	}
+	if msg := err.Error(); !strings.Contains(msg, "400") || !strings.Contains(msg, "44") || !strings.Contains(msg, "bad") {
+		t.Fatalf("Error() = %q, want HTTP status, rc and message", msg)
 	}
 }
 
@@ -195,7 +202,12 @@ func TestTopupNon2xxWithoutStatusIsError(t *testing.T) {
 	defer srv.Close()
 
 	c := &digiflazz.Client{Username: "u", APIKey: "k", BaseURL: srv.URL}
-	if _, err := c.Topup(context.Background(), digiflazz.TopupReq{SKU: "A", CustomerNo: "1", RefID: "r1"}); err == nil {
+	_, err := c.Topup(context.Background(), digiflazz.TopupReq{SKU: "A", CustomerNo: "1", RefID: "r1"})
+	if err == nil {
 		t.Fatal("Topup() error = nil, want transport error when no status is given")
+	}
+	var resErr *digiflazz.ResultError
+	if errors.As(err, &resErr) {
+		t.Fatalf("Topup error = %v, want a plain error, not *ResultError", err)
 	}
 }

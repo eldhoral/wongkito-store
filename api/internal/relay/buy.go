@@ -281,6 +281,12 @@ func (e *Engine) buyUnits(ctx context.Context, id, sku, customerNo string, maxPr
 			MaxPrice:   maxPrice,
 			Testing:    e.DryRun,
 		})
+		var resErr *digiflazz.ResultError
+		if errors.As(txErr, &resErr) {
+			// First send of a new ref_id: a definitive non-2xx result is the
+			// transaction's outcome, so settle it.
+			tx, txErr = resErr.Result, nil
+		}
 		if txErr != nil {
 			break // transport error: leave the attempt unknown for the re-check loop
 		}
