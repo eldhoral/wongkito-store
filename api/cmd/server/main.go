@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"regexp"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -112,11 +113,15 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
-	go a.engine.Run(ctx)
-	go pruneLogs(ctx, a.db)
+	var wg sync.WaitGroup // waited before the deferred db.Close()
+	wg.Add(2)
+	go func() { defer wg.Done(); a.engine.Run(ctx) }()
+	go func() { defer wg.Done(); pruneLogs(ctx, a.db) }()
 
 	srv := &http.Server{Addr: cfg.ListenAddr, Handler: a.handler, ReadHeaderTimeout: 10 * time.Second}
+	drained := make(chan struct{})
 	go func() {
+		defer close(drained)
 		<-ctx.Done()
 		sctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
@@ -126,4 +131,6 @@ func main() {
 	if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+	<-drained // ErrServerClosed returns before in-flight requests finish
+	wg.Wait()
 }
