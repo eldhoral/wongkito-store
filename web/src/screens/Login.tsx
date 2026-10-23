@@ -40,7 +40,7 @@ export function Login({ onSuccess }: { onSuccess: () => void }) {
           autoFocus
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="mt-1.5 h-12 w-full rounded-xl bg-well px-3.5 text-base text-hi ring-1 ring-line outline-none focus:ring-line-2"
+          className="mt-1.5 h-12 w-full rounded-xl bg-well px-3.5 text-base text-hi ring-1 ring-line outline-none focus-visible:ring-2 focus-visible:ring-hi"
         />
         <p role="alert" className="mt-2 min-h-5 text-[12.5px] text-stop">
           {error}

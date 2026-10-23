@@ -34,6 +34,7 @@ export default function App() {
   // ponytail: null = still probing the session; a 401 anywhere flips to 'out'.
   const [authed, setAuthed] = useState<boolean | null>(null);
   const tab = useTab();
+  const Screen = SCREENS[tab];
 
   useEffect(() => {
     setUnauthorizedHandler(() => {
@@ -51,7 +52,7 @@ export default function App() {
 
   return (
     <div className="mx-auto flex h-dvh max-w-3xl flex-col">
-      <main className="flex-1 overflow-y-auto">{SCREENS[tab]()}</main>
+      <main className="flex-1 overflow-y-auto"><Screen /></main>
       <TabBar active={tab} />
     </div>
   );
