@@ -2,9 +2,11 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, setUnauthorizedHandler } from './api/client';
 import { TabBar, type Tab } from './components/TabBar';
+import { History } from './screens/History';
 import { Login } from './screens/Login';
 import { Products } from './screens/Products';
 import { Queue } from './screens/Queue';
+import { Settings } from './screens/Settings';
 
 const TABS: Tab[] = ['queue', 'products', 'history', 'settings'];
 
@@ -19,17 +21,12 @@ function useTab(): Tab {
   return (TABS as string[]).includes(name) ? (name as Tab) : 'queue';
 }
 
-// Task 19 replaces these placeholders.
 const SCREENS: Record<Tab, () => React.ReactNode> = {
   queue: () => <Queue />,
   products: () => <Products />,
-  history: () => <Placeholder title="History" />,
-  settings: () => <Placeholder title="Settings" />,
+  history: () => <History />,
+  settings: () => <Settings />,
 };
-
-function Placeholder({ title }: { title: string }) {
-  return <h1 className="px-5 pt-6 text-xl font-semibold tracking-tight">{title}</h1>;
-}
 
 export default function App() {
   const qc = useQueryClient();
