@@ -3,14 +3,14 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { QueueResponse } from '../api/types';
 import { FocusCard } from '../components/FocusCard';
+import { NewOrderSheet } from '../components/NewOrderSheet';
 import { QueueRow } from '../components/QueueRow';
 import { formatRp } from '../lib/format';
 
 export function Queue() {
   const [editing, setEditing] = useState(false);
   const [focusId, setFocusId] = useState<string | null>(null);
-  // Task 17 renders the new-order sheet from this state.
-  const [, setNewOpen] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const focusRef = useRef<HTMLDivElement>(null);
 
@@ -56,6 +56,7 @@ export function Queue() {
           + New order
         </button>
       </div>
+      <NewOrderSheet open={newOpen} onOpenChange={setNewOpen} />
 
       <div ref={focusRef}>
         {focus ? (
