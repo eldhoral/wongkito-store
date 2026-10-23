@@ -197,3 +197,10 @@ func (e *Engine) alert(ctx context.Context, text string, urgent bool) {
 	}
 	_ = e.TG.Send(ctx, text, urgent)
 }
+
+func boolInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
+}

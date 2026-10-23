@@ -226,10 +226,3 @@ func insertTestOrder(t *testing.T, e *Engine, id string, itemkuID, productID, qu
 		 VALUES (?, 'itemku', ?, 'OD-1', ?, 'MLBB', 'Product', 15000, ?, 13500, ?, 'new', ?, ?)`,
 		id, itemkuID, productID, quantity, info, created, created)
 }
-
-func boolInt(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
-}
