@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Drawer } from 'vaul';
 import { api } from '../api/client';
 import type { GroupModeReq, GroupModeResponse, OrderView, ProductGroup, ProductMode, QueueResponse, TemplateReq } from '../api/types';
-import { keys, render } from '../lib/tmpl';
+import { EmptyError, keys, render } from '../lib/tmpl';
 
 interface Props {
   group: ProductGroup | null;
@@ -45,12 +45,14 @@ function GroupBody({ group, onClose }: { group: ProductGroup; onClose: () => voi
   const names = keys(template);
   const info = Object.fromEntries(names.map((k) => [k, sample?.info[k]?.trim() || k]));
   let example = '';
-  let exampleError = '';
+  let exampleError = ''; // blocks Save: the template itself is invalid
+  let exampleNote = ''; // preview only: echoed names have no digits for {key|digits}
   if (names.length > 0) {
     try {
       example = `${names.map((k) => `${k}=${info[k]}`).join(', ')} → ${render(template, info)}`;
     } catch (e) {
-      exampleError = e instanceof Error ? e.message : 'Invalid template';
+      if (e instanceof EmptyError) exampleNote = `Example needs a sample order with ${names.join(', ')}`;
+      else exampleError = e instanceof Error ? e.message : 'Invalid template';
     }
   }
 
@@ -115,7 +117,7 @@ function GroupBody({ group, onClose }: { group: ProductGroup; onClose: () => voi
             className="mt-1 h-11 w-full rounded-lg bg-sheet px-3 font-mono text-[15px] font-semibold outline-none ring-1 ring-line"
           />
           <p className={`mt-1.5 min-h-4 font-mono text-xs break-all ${exampleError ? 'text-stop' : 'text-mid'}`}>
-            {exampleError || example}
+            {exampleError || exampleNote || example}
           </p>
           <button
             type="button"
