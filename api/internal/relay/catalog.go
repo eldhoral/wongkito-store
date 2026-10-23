@@ -93,7 +93,11 @@ func (e *Engine) SyncPriceList(ctx context.Context) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	return e.evaluateProducts(ctx)
+	if err := e.evaluateProducts(ctx); err != nil {
+		return err
+	}
+	_ = e.setSetting(ctx, "last_price_sync_at", strconv.FormatInt(e.now().Unix(), 10))
+	return nil
 }
 
 // SetMode applies an owner action: off, manual or auto.
