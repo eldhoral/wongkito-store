@@ -5,7 +5,7 @@
 3. **Build.** `make build` -> `bin/wongkito`; copy to `/opt/wongkito/wongkito`.
 4. **Env file** `/etc/wongkito.env` (mode 600). Variables: `ITEMKU_API_KEY`, `ITEMKU_SECRET`, `ITEMKU_SHOP_ID`,
    `DF_USERNAME`, `DF_API_KEY`, `DF_WEBHOOK_SECRET`, `TG_BOT_TOKEN`, `TG_CHAT_ID`, `ADMIN_PASSWORD_HASH`,
-   `SESSION_SECRET`, `DB_PATH` (e.g. `/var/lib/wongkito/wongkito.db`), `LISTEN_ADDR` (default `:8080`), `DRY_RUN`.
+   `SESSION_SECRET`, `DB_PATH` (e.g. `/var/lib/wongkito/wongkito.db`), `LISTEN_ADDR` (default `127.0.0.1:8080`), `DRY_RUN`.
    Admin password hash (bcrypt):
    ```
    htpasswd -bnBC 10 "" <pw> | tr -d ':\n'

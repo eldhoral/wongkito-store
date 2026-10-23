@@ -66,6 +66,18 @@ func TestRender(t *testing.T) {
 			wantAnyErr: true,
 		},
 		{
+			name:     "unclosed brace",
+			template: `{player_id}|{zone_id`,
+			info:     map[string]string{"player_id": "123", "zone_id": "1"},
+			wantErr:  tmpl.ErrUnmatchedBrace,
+		},
+		{
+			name:     "stray closing brace",
+			template: `{player_id}}`,
+			info:     map[string]string{"player_id": "123"},
+			wantErr:  tmpl.ErrUnmatchedBrace,
+		},
+		{
 			name:     "empty template",
 			template: "  ",
 			info:     nil,

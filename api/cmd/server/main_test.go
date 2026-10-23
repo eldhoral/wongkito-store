@@ -12,6 +12,11 @@ import (
 
 func TestServerBoots(t *testing.T) {
 	t.Setenv("DB_PATH", filepath.Join(t.TempDir(), "t.db"))
+	t.Setenv("ITEMKU_API_KEY", "k")
+	t.Setenv("ITEMKU_SECRET", "s")
+	t.Setenv("ITEMKU_SHOP_ID", "1")
+	t.Setenv("DF_USERNAME", "u")
+	t.Setenv("DF_API_KEY", "k")
 	t.Setenv("DF_WEBHOOK_SECRET", "whsec")
 	t.Setenv("ADMIN_PASSWORD_HASH", "x")
 	t.Setenv("SESSION_SECRET", "s")

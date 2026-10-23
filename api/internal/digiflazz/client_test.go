@@ -168,3 +168,34 @@ func TestTransportErrorReturnsEmptyResult(t *testing.T) {
 		t.Fatalf("TxResult = %#v, want zero value", got)
 	}
 }
+
+func TestTopupDefinitiveResultOnNon2xx(t *testing.T) {
+	body := `{"data":{"ref_id":"r1","status":"Gagal","rc":"44","message":"bad","buyer_last_saldo":"10000.50"}}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	c := &digiflazz.Client{Username: "u", APIKey: "k", BaseURL: srv.URL}
+	got, err := c.Topup(context.Background(), digiflazz.TopupReq{SKU: "A", CustomerNo: "1", RefID: "r1"})
+	if err != nil {
+		t.Fatalf("Topup: %v, want the Gagal result", err)
+	}
+	if got.Status != "Gagal" || got.RC != "44" || got.BuyerLastSaldo != 10000.50 {
+		t.Fatalf("result = %#v, want Gagal rc 44 saldo 10000.50", got)
+	}
+}
+
+func TestTopupNon2xxWithoutStatusIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = io.WriteString(w, `{"data":{"message":"upstream down"}}`)
+	}))
+	defer srv.Close()
+
+	c := &digiflazz.Client{Username: "u", APIKey: "k", BaseURL: srv.URL}
+	if _, err := c.Topup(context.Background(), digiflazz.TopupReq{SKU: "A", CustomerNo: "1", RefID: "r1"}); err == nil {
+		t.Fatal("Topup() error = nil, want transport error when no status is given")
+	}
+}

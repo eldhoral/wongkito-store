@@ -53,15 +53,15 @@ func (n *Num) UnmarshalJSON(data []byte) error {
 
 // TxResult is a prepaid transaction (top-up or status re-check) result.
 type TxResult struct {
-	RefID          string  `json:"ref_id"`
-	CustomerNo     string  `json:"customer_no"`
-	SKU            string  `json:"buyer_sku_code"`
-	Message        string  `json:"message"`
-	Status         string  `json:"status"`
-	RC             string  `json:"rc"`
-	SN             string  `json:"sn"`
-	Price          Num     `json:"price"`
-	BuyerLastSaldo float64 `json:"buyer_last_saldo"`
+	RefID          string        `json:"ref_id"`
+	CustomerNo     string        `json:"customer_no"`
+	SKU            string        `json:"buyer_sku_code"`
+	Message        string        `json:"message"`
+	Status         string        `json:"status"`
+	RC             string        `json:"rc"`
+	SN             string        `json:"sn"`
+	Price          Num           `json:"price"`
+	BuyerLastSaldo flexibleFloat `json:"buyer_last_saldo"`
 }
 
 // TopupReq is one purchase request. MaxPrice is omitted when zero; Testing
@@ -146,6 +146,12 @@ func (c *Client) post(ctx context.Context, path string, body any) (json.RawMessa
 		return nil, fmt.Errorf("digiflazz: read response: %w", readErr)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		// Digiflazz can send a definitive transaction result (e.g. Gagal) with a
+		// non-2xx status. Treat it as the result; otherwise the attempt would
+		// stay unknown forever.
+		if data, ok := finalTxData(respBody); ok {
+			return data, nil
+		}
 		return nil, fmt.Errorf("digiflazz: %s: HTTP %d: %s", path, resp.StatusCode, strings.TrimSpace(string(respBody)))
 	}
 	var env struct {
@@ -162,6 +168,24 @@ func (c *Client) post(ctx context.Context, path string, body any) (json.RawMessa
 		return nil, fmt.Errorf("digiflazz: %s: empty data", path)
 	}
 	return env.Data, nil
+}
+
+// finalTxData returns body's data when it is a transaction with a known status.
+func finalTxData(body []byte) (json.RawMessage, bool) {
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	var tx struct {
+		Status string `json:"status"`
+	}
+	if json.Unmarshal(body, &env) != nil || json.Unmarshal(env.Data, &tx) != nil {
+		return nil, false
+	}
+	switch tx.Status {
+	case "Sukses", "Pending", "Gagal":
+		return env.Data, true
+	}
+	return nil, false
 }
 
 // Topup buys one unit. Re-sending the same RefID is safe: Digiflazz returns

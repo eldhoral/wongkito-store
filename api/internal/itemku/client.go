@@ -152,10 +152,7 @@ func (c *Client) GetOrder(ctx context.Context, orderID int64) (*Order, error) {
 			return &orders[i], nil
 		}
 	}
-	if len(orders) == 1 {
-		return &orders[0], nil
-	}
-	return nil, nil
+	return nil, nil // never fall back to an order with another id
 }
 
 // Deliver marks an itemku order delivered.

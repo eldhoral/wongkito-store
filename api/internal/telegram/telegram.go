@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -50,14 +52,20 @@ func (b *Bot) Send(ctx context.Context, text string, urgent bool) error {
 	if err != nil {
 		return fmt.Errorf("telegram: marshal: %w", err)
 	}
-	url := b.baseURL() + "/bot" + b.Token + "/sendMessage"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
+	// The URL carries the bot token, so no error below may include it: these
+	// errors reach the Settings screen.
+	endpoint := b.baseURL() + "/bot" + b.Token + "/sendMessage"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("telegram: build request: %w", err)
+		return errors.New("telegram: build request: invalid base URL or token")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := b.httpClient().Do(req)
 	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err // drop "Post <url>:"
+		}
 		return fmt.Errorf("telegram: send: %w", err)
 	}
 	defer resp.Body.Close()

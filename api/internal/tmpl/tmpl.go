@@ -13,6 +13,8 @@ var (
 	ErrMissingKey = errors.New("template: missing key")
 	// ErrEmpty is returned when rendering produces an empty customer number.
 	ErrEmpty = errors.New("template: empty result")
+	// ErrUnmatchedBrace is returned when the result still contains { or }.
+	ErrUnmatchedBrace = errors.New("template: unmatched brace")
 )
 
 var (
@@ -57,6 +59,10 @@ func Render(template string, info map[string]string) (string, error) {
 	result := out.String()
 	if strings.TrimSpace(result) == "" {
 		return "", ErrEmpty
+	}
+	// A typo like "{player_id}|{zone_id" must not send a half-filled number.
+	if strings.ContainsAny(result, "{}") {
+		return "", fmt.Errorf("%w: %q", ErrUnmatchedBrace, result)
 	}
 	return result, nil
 }

@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
+	"time"
 )
 
 // ErrStockLocked is returned when itemku refuses to change stock for a
@@ -28,6 +31,86 @@ type Order struct {
 	OrderCreatedEpoch   int64  `json:"order_created_at"`
 	BuyerName           string `json:"buyer_name"`
 	CategoryName        string `json:"category_name"`
+}
+
+// wib is itemku's local time (Asia/Jakarta, UTC+7, no DST). A fixed zone
+// avoids depending on tzdata being installed.
+var wib = time.FixedZone("WIB", 7*3600)
+
+// UnmarshalJSON decodes the money, quantity and timestamp fields leniently:
+// their exact JSON types are unverified, and one mismatch would fail the whole
+// order list and stop all intake.
+func (o *Order) UnmarshalJSON(data []byte) error {
+	type plain Order
+	var raw struct {
+		plain
+		Price       lenientInt  `json:"price"`
+		Quantity    lenientInt  `json:"quantity"`
+		OrderIncome lenientInt  `json:"order_income"`
+		CreatedAt   lenientTime `json:"order_created_at"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*o = Order(raw.plain)
+	o.Price = int64(raw.Price)
+	o.Quantity = int64(raw.Quantity)
+	o.OrderIncome = int64(raw.OrderIncome)
+	o.OrderCreatedEpoch = int64(raw.CreatedAt)
+	return nil
+}
+
+// lenientInt accepts a JSON number or a numeric string ("15000", "15000.00").
+type lenientInt int64
+
+func (n *lenientInt) UnmarshalJSON(data []byte) error {
+	s := unquote(data)
+	if s == "" || s == "null" {
+		*n = 0
+		return nil
+	}
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		*n = lenientInt(v)
+		return nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return fmt.Errorf("itemku: invalid number %q", s)
+	}
+	*n = lenientInt(math.Round(v))
+	return nil
+}
+
+// lenientTime accepts epoch seconds (number or string) or a WIB wall-clock
+// "2006-01-02 15:04:05" and stores epoch seconds.
+type lenientTime int64
+
+func (t *lenientTime) UnmarshalJSON(data []byte) error {
+	s := unquote(data)
+	if s == "" || s == "null" {
+		*t = 0
+		return nil
+	}
+	if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+		*t = lenientTime(v)
+		return nil
+	}
+	for _, layout := range []string{"2006-01-02 15:04:05", time.RFC3339} {
+		if v, err := time.ParseInLocation(layout, s, wib); err == nil {
+			*t = lenientTime(v.Unix())
+			return nil
+		}
+	}
+	return fmt.Errorf("itemku: invalid timestamp %q", s)
+}
+
+func unquote(data []byte) string {
+	s := strings.TrimSpace(string(data))
+	var text string
+	if strings.HasPrefix(s, `"`) && json.Unmarshal(data, &text) == nil {
+		return strings.TrimSpace(text)
+	}
+	return s
 }
 
 // Info parses required_information (a JSON object encoded as a string) into

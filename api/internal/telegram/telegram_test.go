@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"wongkito/api/internal/telegram"
@@ -61,5 +62,20 @@ func TestSendErrorsOnTelegramFailure(t *testing.T) {
 	bot := &telegram.Bot{Token: "TOKEN", ChatID: "123", BaseURL: srv.URL}
 	if err := bot.Send(context.Background(), "hi", false); err == nil {
 		t.Fatal("Send() error = nil, want error")
+	}
+}
+
+func TestSendTransportErrorHidesToken(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	base := srv.URL
+	srv.Close() // connection refused: a transport error, i.e. a *url.Error
+
+	bot := &telegram.Bot{Token: "123456:SECRET-TOKEN", ChatID: "1", BaseURL: base}
+	err := bot.Send(context.Background(), "hi", false)
+	if err == nil {
+		t.Fatal("Send() error = nil, want transport error")
+	}
+	if strings.Contains(err.Error(), "SECRET-TOKEN") {
+		t.Fatalf("error leaks the bot token: %v", err)
 	}
 }
