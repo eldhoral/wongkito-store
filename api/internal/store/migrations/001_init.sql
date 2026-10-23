@@ -11,6 +11,7 @@ CREATE TABLE orders (
     quantity        INTEGER NOT NULL DEFAULT 1,
     order_income    INTEGER NOT NULL DEFAULT 0,
     required_info   TEXT NOT NULL DEFAULT '{}',
+    using_delivery_info INTEGER NOT NULL DEFAULT 0,
     customer_no     TEXT NOT NULL DEFAULT '',
     buyer_name      TEXT NOT NULL DEFAULT '',
     buyer_wa        TEXT NOT NULL DEFAULT '',
