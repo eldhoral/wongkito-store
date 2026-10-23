@@ -1,0 +1,115 @@
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  .B { --sheet:#FFFFFF; --desk:#F4F4F1; --well:#EDEDEA; --line:rgba(17,19,23,.07); --line-2:rgba(17,19,23,.13);
+       --hi:#111317; --mid:#5B606A; --lo:#8C9099; --dim:#C4C6CB;
+       --sent:#14955A; --hold:#B9780B; --stop:#D23B2C; --act:#2F54EB;
+       font-family:"Geist", system-ui, sans-serif; -webkit-font-smoothing:antialiased; background:var(--desk); color:var(--hi) }
+  .wrap { display:flex; gap:36px; flex-wrap:wrap; justify-content:center; align-items:flex-start }
+  .ph { width:360px; height:740px; border-radius:40px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 0 0 9px #0a0a0a, 0 24px 60px rgba(0,0,0,.35) }
+  .mono { font-family:"Geist Mono", ui-monospace, monospace } .tn { font-variant-numeric:tabular-nums }
+  .B .top { padding:22px 20px 12px; display:flex; justify-content:space-between; align-items:flex-end }
+  .B .top h1 { margin:0; font-size:24px; font-weight:600; letter-spacing:-.03em }
+  .B .top .s { font-size:12px; color:var(--lo) }
+  .B .filters { display:flex; gap:6px; padding:0 20px 12px; overflow:hidden }
+  .B .f { height:32px; padding:0 12px; border-radius:99px; font-size:12.5px; font-weight:500; display:flex; align-items:center; gap:6px; color:var(--mid); box-shadow:inset 0 0 0 1px var(--line-2); white-space:nowrap }
+  .B .f.on { background:var(--hi); color:#fff; box-shadow:none }
+  .B .f b { font-weight:600 } .B .f.warn b { color:var(--hold) }
+  .B .list { flex:1; overflow:hidden }
+  .B .grp { margin:0 12px 10px; background:var(--sheet); border-radius:18px; box-shadow:0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.04) }
+  .B .gh { padding:14px 14px 10px 16px; display:flex; justify-content:space-between; align-items:center }
+  .B .gh b { font-size:15px; font-weight:600; letter-spacing:-.01em }
+  .B .gh .t { font-size:11.5px; color:var(--lo); margin-top:2px }
+  .B .gh .t .mono { color:var(--mid) }
+  .B .more { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:var(--mid) }
+  .B .it { padding:10px 14px 12px 16px; border-top:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; gap:10px }
+  .B .it .n { font-size:14px; font-weight:500 }
+  .B .it .p { font-size:11.5px; color:var(--lo); margin-top:2px }
+  .B .it .p .m { color:var(--sent); font-weight:500 } .B .it .p .neg { color:var(--stop); font-weight:500 }
+  .B .it.off .n { color:var(--lo) }
+  /* the one control: Off · Manual · Auto  (itemku stock + fulfilment mode) */
+  .B .mode { display:flex; background:var(--well); border-radius:10px; padding:2px; flex:0 0 auto; box-shadow:inset 0 0 0 1px var(--line) }
+  .B .mode span { min-width:44px; height:32px; padding:0 8px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:600; color:var(--lo); border-radius:8px }
+  .B .mode .x.sel { background:var(--sheet); color:var(--stop); box-shadow:0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.08) }
+  .B .mode .mn.sel { background:var(--sheet); color:var(--hi); box-shadow:0 0 0 1px var(--line), 0 1px 2px rgba(0,0,0,.08) }
+  .B .mode .au.sel { background:var(--hi); color:#fff }
+  .B .mode.dis .au { color:var(--dim) }
+  .B .hint { font-size:11.5px; color:var(--hold); margin-top:2px }
+  .B .nav { display:flex; padding:10px 8px 24px; background:var(--desk); border-top:1px solid var(--line) }
+  .B .nav div { flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; font-size:10.5px; color:var(--lo); font-weight:500 }
+  .B .nav .on { color:var(--hi) }
+  /* bottom sheet */
+  .B .scrim { position:relative; flex:1; display:flex; flex-direction:column }
+  .B .scrim::before { content:""; position:absolute; inset:0; background:rgba(17,19,23,.32); z-index:1 }
+  .B .sheet { position:absolute; left:0; right:0; bottom:0; z-index:2; background:var(--sheet); border-radius:24px 24px 0 0; padding:10px 20px 28px; box-shadow:0 -8px 30px rgba(0,0,0,.12) }
+  .B .grab { width:36px; height:4px; border-radius:2px; background:var(--dim); margin:0 auto 16px }
+  .B .sheet h3 { margin:0; font-size:18px; font-weight:600; letter-spacing:-.02em }
+  .B .sheet .sub { font-size:12.5px; color:var(--lo); margin-top:2px }
+  .B .row { height:52px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); font-size:14.5px; font-weight:500 }
+  .B .row .r { font-size:13px; color:var(--mid); font-weight:400 }
+  .B .row.red { color:var(--stop) }
+  .B .tpl { margin:14px 0 6px; background:var(--well); border-radius:12px; padding:12px 14px; box-shadow:inset 0 0 0 1px var(--line) }
+  .B .tpl .l { font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--lo) }
+  .B .tpl .v { font-size:16px; font-weight:600; margin-top:4px }
+  .B .tpl .ex { font-size:12px; color:var(--mid); margin-top:4px }
+  .cap { max-width:360px; margin-top:16px } .cap h3 { margin:0 0 4px }
+</style>
+
+<h2>Direction B · Products</h2>
+<p class="subtitle">One control per item: <b>Off · Manual · Auto</b>. Off sets the item's stock to 0 on itemku so buyers can't order it.</p>
+
+<div class="wrap">
+
+<!-- PRODUCTS LIST -->
+<div>
+<div class="ph B">
+  <div class="top"><h1>Products</h1><span class="s">synced 10:30</span></div>
+  <div class="filters"><span class="f on">All <b>41</b></span><span class="f">Auto <b>18</b></span><span class="f">Off <b>6</b></span><span class="f warn">Unlinked <b>3</b></span></div>
+  <div class="list">
+    <div class="grp">
+      <div class="gh"><div><b>Mobile Legends</b><div class="t">Seller A · <span class="mono">{player_id}|{zone_id}</span></div></div><span class="more">•••</span></div>
+      <div class="it"><div><div class="n">86 Diamonds</div><div class="p tn">22.150 → 23.000 <span class="m">+850</span></div></div><div class="mode"><span class="x">Off</span><span class="mn">Man</span><span class="au sel">Auto</span></div></div>
+      <div class="it"><div><div class="n">172 Diamonds</div><div class="p tn">44.210 → 45.000 <span class="m">+790</span></div></div><div class="mode"><span class="x">Off</span><span class="mn">Man</span><span class="au sel">Auto</span></div></div>
+      <div class="it off"><div><div class="n">Weekly Diamond Pass</div><div class="p tn">27.400 → 27.000 <span class="neg">−400</span></div></div><div class="mode"><span class="x sel">Off</span><span class="mn">Man</span><span class="au">Auto</span></div></div>
+    </div>
+    <div class="grp">
+      <div class="gh"><div><b>DANA</b><div class="t">Seller C · <span class="mono">{phone}</span></div></div><span class="more">•••</span></div>
+      <div class="it"><div><div class="n">Saldo 50.000</div><div class="p tn">50.120 → 51.500 <span class="m">+1.380</span></div></div><div class="mode"><span class="x">Off</span><span class="mn sel">Man</span><span class="au">Auto</span></div></div>
+    </div>
+    <div class="grp">
+      <div class="gh"><div><b>Genshin Impact</b><div class="t">no Digiflazz SKU linked</div></div><span class="more">•••</span></div>
+      <div class="it"><div><div class="n">60 Genesis Crystals</div><div class="hint">Link a SKU to enable Auto</div></div><div class="mode dis"><span class="x">Off</span><span class="mn sel">Man</span><span class="au">Auto</span></div></div>
+    </div>
+  </div>
+  <div class="nav">
+    <div><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 5h14M3 10h14M3 15h9"/></svg>Queue</div>
+    <div class="on"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="11" y="3" width="6" height="6" rx="1.5"/><rect x="3" y="11" width="6" height="6" rx="1.5"/><rect x="11" y="11" width="6" height="6" rx="1.5"/></svg>Products</div>
+    <div><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg>History</div>
+    <div><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.5"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg>Settings</div>
+  </div>
+</div>
+<div class="cap"><h3>Products list</h3><p>Grouped by game + seller, template in the header. The −400 item is a guess at a useful warning: selling below Digiflazz cost.</p></div>
+</div>
+
+<!-- GROUP SHEET -->
+<div>
+<div class="ph B">
+  <div class="top"><h1>Products</h1><span class="s">synced 10:30</span></div>
+  <div class="scrim">
+    <div class="list" style="opacity:.9">
+      <div class="grp"><div class="gh"><div><b>Mobile Legends</b><div class="t">Seller A</div></div></div></div>
+    </div>
+    <div class="sheet">
+      <div class="grab"></div>
+      <h3>Mobile Legends · Seller A</h3>
+      <div class="sub">12 items · 9 Auto · 2 Manual · 1 Off</div>
+      <div class="tpl"><div class="l">Customer no. template</div><div class="v mono">{player_id}|{zone_id}</div><div class="ex mono">player_id=12345678, zone_id=1234 → 12345678|1234</div></div>
+      <div class="row">Set all to Auto<span class="r">12 items</span></div>
+      <div class="row">Set all to Manual<span class="r">12 items</span></div>
+      <div class="row red">Turn all off on itemku<span class="r">stock → 0</span></div>
+    </div>
+  </div>
+</div>
+<div class="cap"><h3>Group sheet (•••)</h3><p>Edit the template once for the game + seller pair. Bulk switch, e.g. turn all Mobile Legends off while a seller is down.</p></div>
+</div>
+
+</div>
