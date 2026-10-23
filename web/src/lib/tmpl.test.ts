@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EmptyError, MissingKeyError, keys, render } from './tmpl';
+import { EmptyError, MissingKeyError, UnmatchedBraceError, keys, render } from './tmpl';
 
 // Mirrors api/internal/tmpl/tmpl_test.go case for case.
 describe('render', () => {
@@ -22,6 +22,12 @@ describe('render', () => {
   });
   it('unknown filter', () => {
     expect(() => render('{x|upper}', { x: 'abc' })).toThrow();
+  });
+  it('unclosed brace', () => {
+    expect(() => render('{player_id}|{zone_id', { player_id: '123', zone_id: '1' })).toThrow(UnmatchedBraceError);
+  });
+  it('stray closing brace', () => {
+    expect(() => render('{player_id}}', { player_id: '123' })).toThrow(UnmatchedBraceError);
   });
   it('empty template', () => {
     expect(() => render('  ', {})).toThrow(EmptyError);

@@ -32,13 +32,13 @@ const delivered = (over: Partial<OrderDetail> = {}): OrderDetail => ({
   ...over,
 });
 
-function setup(order: OrderDetail = delivered()) {
+function setup(order: OrderDetail = delivered(), onOpenChange: (open: boolean) => void = () => {}) {
   get.mockImplementation(async (p: string) => (p === '/api/products' ? groups : order));
   send.mockResolvedValue({ id: 'dir-1' });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <NewOrderSheet open onOpenChange={() => {}} />
+      <NewOrderSheet open onOpenChange={onOpenChange} />
     </QueryClientProvider>,
   );
 }
@@ -84,7 +84,7 @@ describe('NewOrderSheet', () => {
       buyerWa: '0812 3456',
       paidPrice: 50000,
     };
-    expect(send).toHaveBeenCalledWith('POST', '/api/orders/direct', want);
+    expect(send).toHaveBeenCalledWith('POST', '/api/orders/direct', { ...want, clientId: expect.any(String) });
   });
 
   it('rawSkuSendsSkuAndCustomerNo', async () => {
@@ -99,7 +99,12 @@ describe('NewOrderSheet', () => {
     await user.click(await screen.findByRole('button', { name: /Telkomsel 5K/ }));
     await user.type(screen.getByLabelText(/customer number/i), '0812999');
     await user.click(screen.getByRole('button', { name: /buy & deliver/i }));
-    expect(send).toHaveBeenCalledWith('POST', '/api/orders/direct', { sku: 'TSEL5', customerNo: '0812999', quantity: 1 });
+    expect(send).toHaveBeenCalledWith('POST', '/api/orders/direct', {
+      sku: 'TSEL5',
+      customerNo: '0812999',
+      quantity: 1,
+      clientId: expect.any(String),
+    });
   });
 
   it('deliveredWithNumberOffersWhatsapp', async () => {
@@ -153,5 +158,35 @@ describe('NewOrderSheet', () => {
     expect(screen.queryByRole('button', { name: /buy & deliver/i })).toBeNull();
     expect(get).toHaveBeenCalledWith('/api/orders/dir-1');
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('networkFailureRetryReusesClientId', async () => {
+    const user = userEvent.setup();
+    setup();
+    send.mockRejectedValueOnce(new Error('Failed to fetch')).mockResolvedValueOnce({ id: 'dir-1' });
+    await pickProduct(user);
+    await user.type(screen.getByLabelText('player_id'), '1');
+    await user.type(screen.getByLabelText('zone_id'), '2');
+    await user.click(screen.getByRole('button', { name: /buy & deliver/i }));
+    expect(await screen.findByText('Failed to fetch')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /buy & deliver/i }));
+    expect(send).toHaveBeenCalledTimes(2);
+    const first = (send.mock.calls[0][2] as DirectReq).clientId;
+    expect(first).toMatch(/^[A-Za-z0-9-]{1,64}$/);
+    expect((send.mock.calls[1][2] as DirectReq).clientId).toBe(first);
+  });
+
+  it('cannotCloseWhileSubmitting', async () => {
+    const user = userEvent.setup();
+    const onOpenChange = vi.fn();
+    setup(delivered(), onOpenChange);
+    send.mockReturnValueOnce(new Promise(() => {})); // never settles
+    await pickProduct(user);
+    await user.type(screen.getByLabelText('player_id'), '1');
+    await user.type(screen.getByLabelText('zone_id'), '2');
+    await user.click(screen.getByRole('button', { name: /buy & deliver/i }));
+    expect(await screen.findByRole('button', { name: /working/i })).toBeTruthy();
+    await user.keyboard('{Escape}');
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 });

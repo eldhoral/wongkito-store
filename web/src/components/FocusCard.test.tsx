@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -54,6 +54,17 @@ function setup(
   );
 }
 
+// jsdom lacks pointer capture, which vaul calls on pointerdown. Scoped to this file.
+const proto = Element.prototype;
+const saved = { set: proto.setPointerCapture, release: proto.releasePointerCapture };
+beforeAll(() => {
+  proto.setPointerCapture = () => {};
+  proto.releasePointerCapture = () => {};
+});
+afterAll(() => {
+  proto.setPointerCapture = saved.set;
+  proto.releasePointerCapture = saved.release;
+});
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -106,5 +117,32 @@ describe('FocusCard', () => {
     await waitFor(() =>
       expect((screen.getByRole('radio', { name: /wrong buyer information/i }) as HTMLInputElement).checked).toBe(true),
     );
+  });
+
+  it('rejectRefusedForSpentMoneyAsksThenForces', async () => {
+    const user = userEvent.setup();
+    const sukses: Attempt = {
+      refId: 'r', unit: 0, attemptNo: 1, sku: 'A', customerNo: 'x', status: 'Sukses', rc: '00', message: '', sn: 'SN', price: 44000, createdAt: 1,
+    };
+    setup(order, undefined, [sukses]);
+    send.mockRejectedValueOnce(new Error('relay: order o1 has a successful or open attempt')).mockResolvedValueOnce({ ok: true });
+    await user.click(await screen.findByRole('button', { name: /reject & refund/i }));
+    const confirm = await screen.findAllByRole('button', { name: /reject & refund/i });
+    await user.click(confirm[confirm.length - 1]); // the sheet's confirm, after the card's opener
+    expect(await screen.findByText(/money was already spent on 1 unit\(s\)\. reject anyway\?/i)).toBeTruthy();
+    expect(send).toHaveBeenLastCalledWith('POST', '/api/orders/o1/reject', { reason: 'NO_STOCK', force: false });
+    await user.click(screen.getByRole('button', { name: /reject anyway/i }));
+    expect(send).toHaveBeenLastCalledWith('POST', '/api/orders/o1/reject', { reason: 'NO_STOCK', force: true });
+  });
+
+  it('directCancelRefusedAsksThenForces', async () => {
+    const user = userEvent.setup();
+    setup({ ...order, source: 'direct' });
+    send.mockRejectedValueOnce(new Error('relay: order o1 has a successful or open attempt')).mockResolvedValueOnce({ ok: true });
+    await user.click(await screen.findByRole('button', { name: /^cancel$/i }));
+    await user.click(await screen.findByRole('button', { name: /cancel order/i }));
+    expect(await screen.findByText(/cancel anyway\?/i)).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: /cancel anyway/i }));
+    expect(send).toHaveBeenLastCalledWith('POST', '/api/orders/o1/cancel', { force: true });
   });
 });

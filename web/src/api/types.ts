@@ -64,7 +64,7 @@ export interface OrderDetail extends OrderView {
 }
 
 export interface QueueStats {
-  balance: number;
+  balance: number | null; // null until the balance loop has fetched it
   autoToday: number;
   sentToday: number;
 }
@@ -139,6 +139,7 @@ export interface DirectReq {
   buyerName?: string;
   buyerWa?: string;
   paidPrice?: number;
+  clientId?: string; // idempotency key: a retried submit never buys twice
 }
 
 // error is set when the order was created but the buy step failed.
@@ -155,6 +156,10 @@ export interface BuyReq {
 
 export interface RejectReq {
   reason: string;
+  force?: boolean;
+}
+
+export interface CancelReq {
   force?: boolean;
 }
 

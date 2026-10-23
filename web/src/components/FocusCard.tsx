@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { BuyReq, OrderDetail, OrderView, RejectReq } from '../api/types';
+import type { BuyReq, CancelReq, OrderDetail, OrderView, RejectReq } from '../api/types';
 import { formatAge, formatCountdown, formatRp, urgency } from '../lib/format';
 import { reasonLabel, reasonTone } from '../lib/reasons';
 import { ConfirmSheet } from './ConfirmSheet';
@@ -13,6 +13,8 @@ const REJECT_REASONS: [string, string][] = [
   ['PRICE_CHANGED', 'Price changed'],
   ['BUYER_UNREACHABLE', 'Buyer unreachable'],
 ];
+// The server's refusal to reject/cancel while a unit is Sukses or still open.
+const SPENT_REFUSAL = /successful or open attempt/;
 // Digiflazz rc codes that mean the target number is wrong.
 const WRONG_NUMBER_RC = new Set(['52', '54', '57', '59']);
 
@@ -44,6 +46,7 @@ export function FocusCard({ order, now, onEditing, onDone }: Props) {
   const [picked, setPicked] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [askForce, setAskForce] = useState(false); // server refused: money spent or open
   const input = useRef<HTMLInputElement>(null);
 
   // Unmounting a focused input fires no blur; release the refetch pause.
@@ -58,7 +61,8 @@ export function FocusCard({ order, now, onEditing, onDone }: Props) {
   )[0]?.rc;
   const reason = picked ?? (lastRc && WRONG_NUMBER_RC.has(lastRc) ? 'WRONG_BUYER_INFORMATION' : 'NO_STOCK');
 
-  async function run(fn: () => Promise<unknown>) {
+  // refused returns true when it handled the error itself.
+  async function run(fn: () => Promise<unknown>, refused?: (message: string) => boolean) {
     setBusy(true);
     setError('');
     try {
@@ -66,7 +70,8 @@ export function FocusCard({ order, now, onEditing, onDone }: Props) {
       await qc.invalidateQueries({ queryKey: ['queue'] });
       onDone();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Request failed');
+      const message = e instanceof Error ? e.message : 'Request failed';
+      if (!refused?.(message)) setError(message);
     } finally {
       setBusy(false);
     }
@@ -74,9 +79,22 @@ export function FocusCard({ order, now, onEditing, onDone }: Props) {
 
   const buy = () =>
     run(() => api.send('POST', `/api/orders/${order.id}/buy`, { sku, customerNo, noCap } satisfies BuyReq));
-  const reject = () =>
-    run(() => api.send('POST', `/api/orders/${order.id}/reject`, { reason } satisfies RejectReq));
-  const cancel = () => run(() => api.send('POST', `/api/orders/${order.id}/cancel`));
+  // Reject/cancel; a spent-money refusal asks once more and resends with force.
+  const close = (force: boolean) =>
+    run(
+      () =>
+        direct
+          ? api.send('POST', `/api/orders/${order.id}/cancel`, { force } satisfies CancelReq)
+          : api.send('POST', `/api/orders/${order.id}/reject`, { reason, force } satisfies RejectReq),
+      (message) => {
+        if (force || !SPENT_REFUSAL.test(message)) return false;
+        setAskForce(true);
+        return true;
+      },
+    );
+  const attempts = detail.data?.attempts ?? [];
+  const spentUnits = new Set(attempts.filter((a) => a.status === 'Sukses').map((a) => a.unit)).size;
+  const verb = direct ? 'Cancel' : 'Reject';
 
   const tone = urgency(order.deadlineAt, order.createdAt, now);
   const info = Object.entries(order.info);
@@ -215,14 +233,25 @@ export function FocusCard({ order, now, onEditing, onDone }: Props) {
           )}
           <ConfirmSheet
             open={sheetOpen}
-            onOpenChange={setSheetOpen}
+            onOpenChange={(open) => {
+              setSheetOpen(open);
+              if (!open) setAskForce(false);
+            }}
             title={direct ? 'Cancel this order?' : 'Reject and refund?'}
             description={direct ? 'The order is marked cancelled. Nothing is bought.' : 'itemku refunds the buyer. Pick the reason they will see.'}
-            confirmLabel={direct ? 'Cancel order' : 'Reject & refund'}
-            onConfirm={direct ? cancel : reject}
+            confirmLabel={askForce ? `${verb} anyway` : direct ? 'Cancel order' : 'Reject & refund'}
+            onConfirm={() => close(askForce)}
             busy={busy}
             error={error}
           >
+            {askForce && (
+              <p role="alert" className="mb-2 text-[13px] font-medium text-stop">
+                {spentUnits > 0
+                  ? `Money was already spent on ${spentUnits} unit(s).`
+                  : 'A purchase is still open and may still succeed.'}{' '}
+                {verb} anyway?
+              </p>
+            )}
             {!direct && (
               <div role="radiogroup" aria-label="Reject reason" className="grid gap-1">
                 {REJECT_REASONS.map(([value, label]) => (

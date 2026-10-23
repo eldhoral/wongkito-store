@@ -24,9 +24,22 @@ function deliveryText(o: OrderDetail, sns: string[]) {
   return [o.product, `ID: ${o.customerNo}`, ...sns.map((sn) => `SN: ${sn}`)].join('\n');
 }
 
+// The form's idempotency key. randomUUID needs a secure context; fall back so
+// plain-http dev still works.
+function newClientId(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function NewOrderSheet({ open, onOpenChange }: Props) {
+  // While a submit is in flight the sheet cannot close: closing would unmount
+  // the form and lose the idempotency key and the order id.
+  const [busy, setBusy] = useState(false);
   return (
-    <Drawer.Root open={open} onOpenChange={onOpenChange}>
+    <Drawer.Root open={open} dismissible={!busy} onOpenChange={(o) => {
+        if (o || !busy) onOpenChange(o);
+      }}
+    >
       <Drawer.Portal>
         <Drawer.Overlay className="fixed inset-0 z-40 bg-hi/30" />
         <Drawer.Content className="fixed inset-x-0 bottom-0 z-50 mx-auto flex h-[calc(100%-1.5rem)] max-w-3xl flex-col rounded-t-[20px] bg-sheet px-5 pt-3 outline-none">
@@ -34,15 +47,18 @@ export function NewOrderSheet({ open, onOpenChange }: Props) {
           <Drawer.Title className="text-lg font-semibold tracking-tight text-hi">New order</Drawer.Title>
           <Drawer.Description className="sr-only">Buy a Digiflazz top-up for a WhatsApp buyer.</Drawer.Description>
           {/* Mounted only while open, so closing resets the form. */}
-          <NewOrderForm onClose={() => onOpenChange(false)} />
+          <NewOrderForm onClose={() => onOpenChange(false)} onBusy={setBusy} />
         </Drawer.Content>
       </Drawer.Portal>
     </Drawer.Root>
   );
 }
 
-function NewOrderForm({ onClose }: { onClose: () => void }) {
+function NewOrderForm({ onClose, onBusy }: { onClose: () => void; onBusy: (busy: boolean) => void }) {
   const qc = useQueryClient();
+  // One key per form: a retry after a network failure reuses it, so the server
+  // returns the order it may already have bought instead of buying again.
+  const [clientId] = useState(newClientId);
   const [tab, setTab] = useState<'product' | 'sku'>('product');
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<Picked | null>(null);
@@ -110,7 +126,9 @@ function NewOrderForm({ onClose }: { onClose: () => void }) {
     if (buyerName.trim()) req.buyerName = buyerName.trim();
     if (buyerWa.trim()) req.buyerWa = buyerWa.trim();
     if (paidPrice > 0) req.paidPrice = paidPrice;
+    req.clientId = clientId;
     setBusy(true);
+    onBusy(true);
     setError('');
     try {
       const { id, error: buyError } = await api.send<DirectResult>('POST', '/api/orders/direct', req);
@@ -121,6 +139,7 @@ function NewOrderForm({ onClose }: { onClose: () => void }) {
       setError(e instanceof Error ? e.message : 'Request failed');
     } finally {
       setBusy(false);
+      onBusy(false);
     }
   }
 

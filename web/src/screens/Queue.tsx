@@ -9,7 +9,10 @@ import { formatRp } from '../lib/format';
 
 export function Queue() {
   const [editing, setEditing] = useState(false);
-  const [focusId, setFocusId] = useState<string | null>(null);
+  // The focus card is pinned to the order first shown so a refetch can never
+  // swap it under the owner's thumb. It moves only after onDone, a row tap, or
+  // when the pinned order leaves needs (a tapped order may be any row).
+  const [pin, setPin] = useState<{ id: string; tapped: boolean } | null>(null);
   const [newOpen, setNewOpen] = useState(false);
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
   const focusRef = useRef<HTMLDivElement>(null);
@@ -25,6 +28,15 @@ export function Queue() {
     refetchInterval: editing ? false : 5000, // don't swap data under a focused input
   });
 
+  const needs = q.data?.needs ?? [];
+  const all = [...needs, ...(q.data?.processing ?? [])];
+  const pinned = pin ? (pin.tapped ? all : needs).find((o) => o.id === pin.id) : undefined;
+  const focus = pinned ?? needs[0];
+  const focusId = focus?.id;
+  useEffect(() => {
+    if (focusId !== undefined && focusId !== pin?.id) setPin({ id: focusId, tapped: false });
+  }, [focusId, pin?.id]);
+
   if (!q.data) {
     return q.error ? (
       <p role="alert" className="px-5 pt-6 text-[13px] text-stop">
@@ -33,9 +45,7 @@ export function Queue() {
     ) : null;
   }
 
-  const { needs, processing, stats } = q.data;
-  const all = [...needs, ...processing];
-  const focus = all.find((o) => o.id === focusId) ?? needs[0];
+  const { stats } = q.data;
   const rest = all.filter((o) => o !== focus);
 
   return (
@@ -43,7 +53,7 @@ export function Queue() {
       <header className="flex items-end justify-between gap-3 px-5 pt-5 pb-1">
         <h1 className="text-2xl font-semibold tracking-[-0.03em]">{needs.length} to handle</h1>
         <div className="tn text-right text-xs text-mid">
-          <b className="block text-sm font-semibold text-hi">{formatRp(stats.balance)}</b>
+          <b className="block text-sm font-semibold text-hi">{stats.balance === null ? '—' : formatRp(stats.balance)}</b>
           saldo · {stats.autoToday} auto today
         </div>
       </header>
@@ -60,7 +70,7 @@ export function Queue() {
 
       <div ref={focusRef}>
         {focus ? (
-          <FocusCard key={focus.id} order={focus} now={now} onEditing={setEditing} onDone={() => setFocusId(null)} />
+          <FocusCard key={focus.id} order={focus} now={now} onEditing={setEditing} onDone={() => setPin(null)} />
         ) : (
           <section className="mx-3 rounded-[20px] bg-sheet p-5 text-center shadow-card">
             <h2 className="text-[22px] font-semibold tracking-[-0.025em]">Nothing needs you</h2>
@@ -80,7 +90,7 @@ export function Queue() {
               order={o}
               now={now}
               onSelect={() => {
-                setFocusId(o.id);
+                setPin({ id: o.id, tapped: true });
                 focusRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
             />

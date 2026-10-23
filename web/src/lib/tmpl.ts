@@ -14,6 +14,13 @@ export class EmptyError extends Error {
   }
 }
 
+export class UnmatchedBraceError extends Error {
+  constructor(result: string) {
+    super(`template: unmatched brace: "${result}"`);
+    this.name = 'UnmatchedBraceError';
+  }
+}
+
 const PLACEHOLDER = /\{([^{}]*)\}/g;
 const VALID = /^([a-zA-Z0-9_ ]+)(?:\|(digits|msisdn))?$/;
 
@@ -36,6 +43,8 @@ export function render(template: string, info: Record<string, string>): string {
     return value;
   });
   if (out.trim() === '') throw new EmptyError();
+  // A typo like "{player_id}|{zone_id" must not send a half-filled number.
+  if (/[{}]/.test(out)) throw new UnmatchedBraceError(out);
   return out;
 }
 
