@@ -1,0 +1,53 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --color-desk: #f4f4f1;
+  --color-sheet: #ffffff;
+  --color-well: #ededea;
+  --color-line: rgba(17, 19, 23, 0.07);
+  --color-line-2: rgba(17, 19, 23, 0.13);
+  --color-hi: #111317;
+  --color-mid: #5b606a;
+  --color-lo: #8c9099;
+  --color-dim: #c4c6cb;
+  --color-sent: #14955a;
+  --color-hold: #b9780b;
+  --color-stop: #d23b2c;
+  --color-act: #2f54eb;
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  --shadow-card: 0 0 0 1px rgba(17, 19, 23, 0.07), 0 4px 16px rgba(17, 19, 23, 0.06);
+}
+
+html,
+body,
+#root {
+  background: var(--color-desk);
+  color: var(--color-hi);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tn {
+  font-variant-numeric: tabular-nums;
+}
+
+button,
+[role='button'] {
+  transition: transform 120ms ease-out;
+}
+button:active,
+[role='button']:active {
+  transform: scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  button,
+  [role='button'] {
+    transition: none;
+  }
+  button:active,
+  [role='button']:active {
+    transform: none;
+  }
+}

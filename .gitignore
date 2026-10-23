@@ -1,2 +1,5 @@
 .superpowers/
 .idea/
+web/node_modules/
+web/dist/
+bin/
