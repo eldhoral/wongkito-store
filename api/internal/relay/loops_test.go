@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -122,5 +123,26 @@ func TestPollCancelsRefundedOverdueOrder(t *testing.T) {
 	}
 	if o.State != StateCancelled {
 		t.Fatalf("state = %s, want cancelled", o.State)
+	}
+}
+
+func TestRunWaitsForInFlightTicks(t *testing.T) {
+	e, _, _, _ := newTestEngine(t)
+	var finished atomic.Bool
+	started := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-started
+		cancel()
+	}()
+	e.run(ctx, []loop{{"slow", time.Hour, func(ctx context.Context) error {
+		close(started)
+		<-ctx.Done()
+		time.Sleep(50 * time.Millisecond)
+		finished.Store(true)
+		return nil
+	}}})
+	if !finished.Load() {
+		t.Fatal("run returned before the in-flight tick finished")
 	}
 }

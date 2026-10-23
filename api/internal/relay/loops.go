@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -18,26 +19,54 @@ const (
 	reminderInterval = time.Minute
 )
 
-// Run starts the background loops and blocks until ctx is cancelled. Each tick
-// runs in its own goroutine so a slow API call never delays the other loops.
-func (e *Engine) Run(ctx context.Context) {
-	go e.every(ctx, "poll orders", pollInterval, e.PollOrders)
-	go e.every(ctx, "recheck pending", recheckInterval, e.RecheckPending)
-	go e.every(ctx, "sync catalog", catalogInterval, func(ctx context.Context) error {
-		productErr := e.SyncProducts(ctx)
-		priceErr := e.SyncPriceList(ctx)
-		if productErr != nil {
-			return productErr
-		}
-		return priceErr
-	})
-	go e.every(ctx, "check balance", balanceInterval, e.CheckBalance)
-	go e.every(ctx, "reminders", reminderInterval, e.Reminders)
-	<-ctx.Done()
+type loop struct {
+	name     string
+	interval time.Duration
+	fn       func(context.Context) error
 }
 
-func (e *Engine) every(ctx context.Context, name string, interval time.Duration, fn func(context.Context) error) {
-	go e.runTick(ctx, name, fn)
+// Run starts the background loops and blocks until ctx is cancelled and all
+// in-flight ticks have returned. Each tick runs in its own goroutine so a slow
+// API call never delays the other loops.
+func (e *Engine) Run(ctx context.Context) {
+	e.run(ctx, []loop{
+		{"poll orders", pollInterval, e.PollOrders},
+		{"recheck pending", recheckInterval, e.RecheckPending},
+		{"sync catalog", catalogInterval, func(ctx context.Context) error {
+			productErr := e.SyncProducts(ctx)
+			priceErr := e.SyncPriceList(ctx)
+			if productErr != nil {
+				return productErr
+			}
+			return priceErr
+		}},
+		{"check balance", balanceInterval, e.CheckBalance},
+		{"reminders", reminderInterval, e.Reminders},
+	})
+}
+
+func (e *Engine) run(ctx context.Context, loops []loop) {
+	var wg sync.WaitGroup
+	for _, l := range loops {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			e.every(ctx, &wg, l.name, l.interval, l.fn)
+		}()
+	}
+	wg.Wait()
+}
+
+// every returns when ctx is done; ticks it spawned are tracked by wg.
+func (e *Engine) every(ctx context.Context, wg *sync.WaitGroup, name string, interval time.Duration, fn func(context.Context) error) {
+	tick := func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			e.runTick(ctx, name, fn)
+		}()
+	}
+	tick()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -45,7 +74,7 @@ func (e *Engine) every(ctx context.Context, name string, interval time.Duration,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			go e.runTick(ctx, name, fn)
+			tick()
 		}
 	}
 }
