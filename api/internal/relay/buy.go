@@ -86,7 +86,7 @@ func (e *Engine) BuyAuto(ctx context.Context, id string) error {
 	}
 	switch outcome {
 	case buySuccess:
-		return e.Deliver(ctx, id)
+		return e.deliverLocked(ctx, id)
 	case buyOpen:
 		return nil
 	}
@@ -132,7 +132,7 @@ func (e *Engine) BuyAuto(ctx context.Context, id string) error {
 			return err
 		}
 		if outcome == buySuccess {
-			return e.Deliver(ctx, id)
+			return e.deliverLocked(ctx, id)
 		}
 		if outcome == buyOpen {
 			return nil
@@ -218,7 +218,7 @@ func (e *Engine) BuyManual(ctx context.Context, id string, opts BuyOpts) error {
 		return err
 	}
 	if outcome == buySuccess {
-		return e.Deliver(ctx, id)
+		return e.deliverLocked(ctx, id)
 	}
 	return nil
 }
@@ -537,30 +537,5 @@ func (e *Engine) setOrderState(ctx context.Context, id, state, reason, detail st
 	_, err := e.DB.DB.ExecContext(ctx,
 		`UPDATE orders SET state = ?, reason = ?, detail = ?, updated_at = ? WHERE id = ?`,
 		state, reason, detail, e.now().Unix(), id)
-	return err
-}
-
-// Deliver is completed in Task 8. This version covers the success path and
-// dry-run mode; the error and timeout handling arrives with deliver.go.
-func (e *Engine) Deliver(ctx context.Context, id string) error {
-	o, err := e.loadOrder(ctx, id)
-	if err != nil {
-		return err
-	}
-	if o == nil || o.State == StateDelivered {
-		return nil
-	}
-	if o.Source == "itemku" && !e.DryRun {
-		if !o.ItemkuOrderID.Valid {
-			return fmt.Errorf("relay: itemku order %s has no itemku id", id)
-		}
-		if err := e.IK.Deliver(ctx, o.ItemkuOrderID.Int64); err != nil {
-			return err
-		}
-	}
-	now := e.now().Unix()
-	_, err = e.DB.DB.ExecContext(ctx,
-		`UPDATE orders SET state = ?, reason = '', detail = '', delivered_at = ?, updated_at = ? WHERE id = ?`,
-		StateDelivered, now, now, id)
 	return err
 }
