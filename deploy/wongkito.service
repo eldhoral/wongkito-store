@@ -1,0 +1,15 @@
+[Unit]
+Description=wongkito itemku-digiflazz relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/wongkito.env
+ExecStart=/opt/wongkito/wongkito
+WorkingDirectory=/opt/wongkito
+User=wongkito
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
