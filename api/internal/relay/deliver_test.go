@@ -152,8 +152,8 @@ func TestRefundedWithPendingAlerts(t *testing.T) {
 	mustExec(t, e, `UPDATE orders SET state = 'processing' WHERE id = ?`, id)
 	insertAttemptRow(t, e, "r1", id, 0, 1, "primary", "123", "Pending", testNow.Unix()-120)
 
-	if err := e.MarkCancelledIfRefunded(context.Background(), itemku.Order{OrderID: 46, Status: "REFUNDED"}); err != nil {
-		t.Fatalf("MarkCancelledIfRefunded: %v", err)
+	if err := e.CloseIfClosedOnItemku(context.Background(), itemku.Order{OrderID: 46, Status: "REFUNDED"}); err != nil {
+		t.Fatalf("CloseIfClosedOnItemku: %v", err)
 	}
 	state, _ := orderState(t, e, id)
 	if state != StateCancelled {
@@ -175,4 +175,67 @@ func insertAttemptRow(t *testing.T, e *Engine, ref, orderID string, unit, attemp
 		 max_price, status, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
 		ref, orderID, unit, attemptNo, sku, customer, status, updated, updated)
+}
+
+func TestDeliveredOnItemkuWithSuksesAlerts(t *testing.T) {
+	e, _, _, tg := newTestEngine(t)
+	id := setupAutoOrder(t, e, "regular", 47)
+	mustExec(t, e, `UPDATE orders SET state = 'needs_you' WHERE id = ?`, id)
+	insertAttemptRow(t, e, "r1", id, 0, 1, "primary", "123", "Sukses", testNow.Unix()-120)
+
+	if err := e.CloseIfClosedOnItemku(context.Background(), itemku.Order{OrderID: 47, Status: "DELIVERED"}); err != nil {
+		t.Fatalf("CloseIfClosedOnItemku: %v", err)
+	}
+	o, _ := e.loadOrder(context.Background(), id)
+	if o.State != StateDelivered || o.Detail != "closed on itemku" || !o.DeliveredAt.Valid {
+		t.Fatalf("order = %s/%q/%v, want delivered, closed on itemku, delivered_at set", o.State, o.Detail, o.DeliveredAt)
+	}
+	if msgs := tg.messages(); len(msgs) != 1 || !msgs[0].urgent {
+		t.Fatalf("messages = %#v, want one urgent money-spent warning", msgs)
+	}
+}
+
+func TestStuckBuyingSettlesToQueue(t *testing.T) {
+	e, _, df, tg := newTestEngine(t)
+	id := setupAutoOrder(t, e, "regular", 48)
+	// A cancelled context between "set buying" and the attempt insert.
+	mustExec(t, e, `UPDATE orders SET state = 'buying', updated_at = ? WHERE id = ?`, testNow.Unix()-300, id)
+	fresh := setupAutoOrderNoSeed(t, e, 48, 148)
+	mustExec(t, e, `UPDATE orders SET state = 'buying', updated_at = ? WHERE id = ?`, testNow.Unix()-30, fresh)
+
+	if err := e.RecheckPending(context.Background()); err != nil {
+		t.Fatalf("RecheckPending: %v", err)
+	}
+	if state, reason := orderState(t, e, id); state != StateNeedsYou || reason != ReasonAutoFailed {
+		t.Fatalf("stuck order = %s/%s, want needs_you/auto_failed", state, reason)
+	}
+	if state, _ := orderState(t, e, fresh); state != StateBuying {
+		t.Fatalf("recent order = %s, want buying (younger than 2 min)", state)
+	}
+	if df.topupCount() != 0 {
+		t.Fatalf("Topup calls = %d, want 0", df.topupCount())
+	}
+	if got := len(tg.messages()); got != 1 {
+		t.Fatalf("alerts = %d, want 1", got)
+	}
+}
+
+func TestLongOpenAttemptAlertsOnce(t *testing.T) {
+	e, _, df, tg := newTestEngine(t)
+	df.topupFn = func(r digiflazz.TopupReq) (digiflazz.TxResult, error) {
+		return digiflazz.TxResult{RefID: r.RefID, Status: "Pending"}, nil
+	}
+	id := setupAutoOrder(t, e, "regular", 49)
+	mustExec(t, e, `UPDATE orders SET state = 'processing' WHERE id = ?`, id)
+	insertAttemptRow(t, e, "old", id, 0, 1, "primary", "123", "unknown", testNow.Unix()-31*60)
+
+	for i := 0; i < 2; i++ {
+		if err := e.RecheckPending(context.Background()); err != nil {
+			t.Fatalf("RecheckPending %d: %v", i, err)
+		}
+	}
+	msgs := tg.messages()
+	if len(msgs) != 1 || !strings.Contains(msgs[0].text, "30 minutes") {
+		t.Fatalf("messages = %#v, want one 30-minute warning", msgs)
+	}
 }

@@ -228,3 +228,49 @@ func loadProductRow(t *testing.T, e *Engine, id int64) *productRow {
 	}
 	return p
 }
+
+func TestUnlinkedProductNotTurnedOff(t *testing.T) {
+	e, ik, df, tg := newTestEngine(t)
+	seedProduct(t, e, 58, "manual", "regular") // as SyncProducts inserts it: no SKU linked
+	mustExec(t, e, `UPDATE products SET stock_locked = 1 WHERE id = 58`)
+	seedProduct(t, e, 59, "manual", "regular")
+	df.priceList = []digiflazz.PriceItem{priceItem("primary", "seller-a", 1000, true, true, true, 100, "", "")}
+
+	if err := e.SyncPriceList(context.Background()); err != nil {
+		t.Fatalf("SyncPriceList: %v", err)
+	}
+	if len(ik.updateStockIDs) != 0 {
+		t.Fatalf("stock calls = %v, want none for unlinked products", ik.updateStockIDs)
+	}
+	for _, id := range []int64{58, 59} {
+		if p := loadProductRow(t, e, id); p.Mode != "manual" || p.OffReason != "" {
+			t.Fatalf("product %d mode/off_reason = %s/%s, want manual unchanged", id, p.Mode, p.OffReason)
+		}
+	}
+	if got := len(tg.messages()); got != 0 {
+		t.Fatalf("Telegram messages = %d, want 0", got)
+	}
+}
+
+func TestEmptyPriceListKeepsCache(t *testing.T) {
+	e, ik, df, _ := newTestEngine(t)
+	seedCatalogProduct(t, e, 49, "auto", 23000, 10, 0.05, "seller-a")
+	df.priceList = []digiflazz.PriceItem{priceItem("primary", "seller-a", 20000, true, true, true, 100, "", "")}
+	if err := e.SyncPriceList(context.Background()); err != nil {
+		t.Fatalf("first SyncPriceList: %v", err)
+	}
+	df.priceList = nil
+	if err := e.SyncPriceList(context.Background()); err == nil {
+		t.Fatal("SyncPriceList(empty) error = nil, want refusal")
+	}
+	var n int
+	if err := e.DB.DB.QueryRow(`SELECT COUNT(*) FROM pricelist`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("pricelist rows = %d (%v), want the cached 1", n, err)
+	}
+	if len(ik.updateStockIDs) != 0 {
+		t.Fatalf("stock calls = %v, want none", ik.updateStockIDs)
+	}
+	if p := loadProductRow(t, e, 49); p.Mode != "auto" {
+		t.Fatalf("mode = %s, want auto", p.Mode)
+	}
+}

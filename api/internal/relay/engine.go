@@ -190,12 +190,29 @@ func isFinal(state string) bool {
 	return false
 }
 
-// alert is best-effort: a Telegram outage must never stop the relay.
+// alert is best-effort: a Telegram outage must never stop the relay. The
+// failure is recorded as Telegram's last error.
 func (e *Engine) alert(ctx context.Context, text string, urgent bool) {
 	if e.TG == nil {
 		return
 	}
-	_ = e.TG.Send(ctx, text, urgent)
+	e.NoteError("telegram", e.TG.Send(ctx, text, urgent))
+}
+
+// NoteError records the last error per external service (itemku, digiflazz,
+// telegram) for the Settings screen. Errors must already be secret-free; the
+// clients never put credentials in error text. It uses its own context so a
+// cancelled request still leaves a trace.
+func (e *Engine) NoteError(service string, err error) {
+	if err == nil || e.DB == nil {
+		return
+	}
+	text := err.Error()
+	if len(text) > 300 {
+		text = text[:300] + "…"
+	}
+	value := e.now().In(wibZone).Format("2006-01-02 15:04 WIB") + ": " + text
+	_ = e.setSetting(context.Background(), "last_error_"+service, value)
 }
 
 func boolInt(v bool) int {

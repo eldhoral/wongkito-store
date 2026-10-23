@@ -135,6 +135,8 @@ func TestQueueSortedByDeadline(t *testing.T) {
 			row.id, row.source, row.id, row.state, row.deadline, apiNow.Unix(), apiNow.Unix())
 	}
 
+	apiExec(t, s, `INSERT INTO settings (key, value) VALUES ('balance', '123000')`)
+
 	rr := apiDo(t, s, http.MethodGet, "/api/queue", nil)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %s", rr.Code, rr.Body.String())
@@ -153,8 +155,19 @@ func TestQueueSortedByDeadline(t *testing.T) {
 			t.Fatalf("needs order = %v, want %v", order, want)
 		}
 	}
-	if got.Stats.Balance != 123000 {
-		t.Fatalf("balance = %d, want 123000", got.Stats.Balance)
+	if got.Stats.Balance == nil || *got.Stats.Balance != 123000 {
+		t.Fatalf("balance = %v, want stored 123000", got.Stats.Balance)
+	}
+}
+
+func TestQueueBalanceUnknownUntilFetched(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	rr := apiDo(t, s, http.MethodGet, "/api/queue", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body.String())
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte(`"balance":null`)) {
+		t.Fatalf("body = %s, want balance null (never fetched; the queue must not call cek-saldo)", rr.Body)
 	}
 }
 
@@ -265,5 +278,43 @@ func TestCreateDirectBuyErrorKeepsID(t *testing.T) {
 	rr = apiDo(t, s, "POST", "/api/orders/direct", relay.DirectReq{ProductID: 999})
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("pre-insert failure status = %d, want 400", rr.Code)
+	}
+}
+
+func TestTemplateRejectsStrayBrace(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	for _, template := range []string{"{player_id}|{zone_id", "{player_id}}", "{x|upper}"} {
+		rr := apiDo(t, s, http.MethodPut, "/api/templates", map[string]any{
+			"seller": "seller-a", "game": "MLBB", "template": template,
+		})
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("template %q: status = %d, want 400", template, rr.Code)
+		}
+	}
+	rr := apiDo(t, s, http.MethodPut, "/api/templates", map[string]any{
+		"seller": "seller-a", "game": "MLBB", "template": "{player_id}|{zone_id}",
+	})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("valid template: status = %d, want 200: %s", rr.Code, rr.Body)
+	}
+}
+
+func TestCancelForceOverridesSpentRefusal(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	apiExec(t, s, `INSERT INTO orders (id, source, order_number, game_name, product_name, price,
+		quantity, order_income, state, created_at, updated_at)
+		VALUES ('dir-x', 'direct', 'dir-x', 'MLBB', 'Product', 0, 1, 0, 'needs_you', 1, 1)`)
+	apiExec(t, s, `INSERT INTO attempts (ref_id, order_id, unit, attempt_no, buyer_sku_code, customer_no,
+		max_price, status, created_at, updated_at) VALUES ('r', 'dir-x', 0, 1, 'A', '1', 0, 'Sukses', 1, 1)`)
+
+	if rr := apiDo(t, s, "POST", "/api/orders/dir-x/cancel", nil); rr.Code != http.StatusBadRequest {
+		t.Fatalf("unforced cancel = %d, want 400", rr.Code)
+	}
+	if rr := apiDo(t, s, "POST", "/api/orders/dir-x/cancel", map[string]bool{"force": true}); rr.Code != http.StatusOK {
+		t.Fatalf("forced cancel = %d, want 200: %s", rr.Code, rr.Body)
+	}
+	var state string
+	if err := s.relay.DB.DB.QueryRow(`SELECT state FROM orders WHERE id = 'dir-x'`).Scan(&state); err != nil || state != "cancelled" {
+		t.Fatalf("state = %q (%v), want cancelled", state, err)
 	}
 }

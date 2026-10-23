@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 
 	"wongkito/api/internal/digiflazz"
@@ -41,7 +42,10 @@ func (s *server) itemkuHook(w http.ResponseWriter, r *http.Request) {
 		ctx := context.Background()
 		s.hooks.NoteCallback()
 		for _, id := range ids {
-			_ = s.hooks.VerifyAndIntake(ctx, id)
+			// The engine records the error as itemku's last error; the poll retries.
+			if err := s.hooks.VerifyAndIntake(ctx, id); err != nil {
+				log.Printf("itemku callback order %d: %v", id, err)
+			}
 		}
 	}()
 }

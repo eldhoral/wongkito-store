@@ -2,6 +2,7 @@ package relay
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -135,7 +136,7 @@ func TestRunWaitsForInFlightTicks(t *testing.T) {
 		<-started
 		cancel()
 	}()
-	e.run(ctx, []loop{{"slow", time.Hour, func(ctx context.Context) error {
+	e.run(ctx, []loop{{"slow", "", time.Hour, func(ctx context.Context) error {
 		close(started)
 		<-ctx.Done()
 		time.Sleep(50 * time.Millisecond)
@@ -144,5 +145,47 @@ func TestRunWaitsForInFlightTicks(t *testing.T) {
 	}}})
 	if !finished.Load() {
 		t.Fatal("run returned before the in-flight tick finished")
+	}
+}
+
+func TestFailingPollRecordsLastErrorAndAlerts(t *testing.T) {
+	e, ik, _, tg := newTestEngine(t)
+	ik.listOpenErr = errors.New("itemku: HTTP 502: bad gateway")
+	poll := loop{name: "poll orders", service: "itemku", fn: e.PollOrders}
+
+	// Last success 1 minute ago: record the error, no alert yet.
+	mustExec(t, e, `INSERT INTO settings (key, value) VALUES ('last_poll_at', ?)`, testNow.Unix()-60)
+	e.runTick(context.Background(), poll)
+	var got string
+	if err := e.DB.DB.QueryRow(`SELECT value FROM settings WHERE key = 'last_error_itemku'`).Scan(&got); err != nil {
+		t.Fatalf("last_error_itemku: %v", err)
+	}
+	if !strings.Contains(got, "bad gateway") || !strings.Contains(got, "WIB") {
+		t.Fatalf("last_error_itemku = %q, want time and error text", got)
+	}
+	if n := len(tg.messages()); n != 0 {
+		t.Fatalf("alerts after 1 min = %d, want 0", n)
+	}
+
+	// Failing for over 5 minutes: alert once.
+	mustExec(t, e, `UPDATE settings SET value = ? WHERE key = 'last_poll_at'`, testNow.Unix()-6*60)
+	e.runTick(context.Background(), poll)
+	e.runTick(context.Background(), poll)
+	if msgs := tg.messages(); len(msgs) != 1 || !strings.Contains(msgs[0].text, "poll has been failing") {
+		t.Fatalf("messages = %#v, want one poll-failing alert", msgs)
+	}
+}
+
+func TestCheckBalanceStoresBalance(t *testing.T) {
+	e, _, df, _ := newTestEngine(t)
+	df.balance = 250000
+	if err := e.CheckBalance(context.Background()); err != nil {
+		t.Fatalf("CheckBalance: %v", err)
+	}
+	if got := e.settingInt(context.Background(), "balance"); got != 250000 {
+		t.Fatalf("stored balance = %d, want 250000", got)
+	}
+	if got := e.settingInt(context.Background(), "balance_at"); got != testNow.Unix() {
+		t.Fatalf("balance_at = %d, want %d", got, testNow.Unix())
 	}
 }

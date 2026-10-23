@@ -55,14 +55,23 @@ func (e *Engine) Intake(ctx context.Context, o itemku.Order) (bool, error) {
 }
 
 // VerifyAndIntake re-reads an order named by the callback and intakes it only
-// while it is still REQUIRE_PROCESS.
+// while it is still REQUIRE_PROCESS. Its error is recorded as itemku's last error.
 func (e *Engine) VerifyAndIntake(ctx context.Context, orderID int64) error {
+	err := e.verifyAndIntake(ctx, orderID)
+	e.NoteError("itemku", err)
+	return err
+}
+
+func (e *Engine) verifyAndIntake(ctx context.Context, orderID int64) error {
 	o, err := e.IK.GetOrder(ctx, orderID)
 	if err != nil {
 		return err
 	}
-	if o == nil || o.Status != "REQUIRE_PROCESS" {
+	if o == nil {
 		return nil
+	}
+	if o.Status != "REQUIRE_PROCESS" {
+		return e.CloseIfClosedOnItemku(ctx, *o)
 	}
 	_, err = e.Intake(ctx, *o)
 	return err
@@ -164,7 +173,7 @@ func (e *Engine) toQueue(ctx context.Context, id, reason, detail string) error {
 	if detail != "" {
 		text += " (" + detail + ")"
 	}
-	_ = e.TG.Send(ctx, text, urgent)
+	e.alert(ctx, text, urgent)
 	return nil
 }
 

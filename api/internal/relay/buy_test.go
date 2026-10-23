@@ -320,3 +320,90 @@ func itoa(v int64) string {
 	}
 	return string(buf[i:])
 }
+
+// Callback and poll race: both Route see new. Only one may buy.
+func TestConcurrentIntakeBuysFailedUnitOnce(t *testing.T) {
+	e, _, df, tg := newTestEngine(t)
+	df.topupFn = func(r digiflazz.TopupReq) (digiflazz.TxResult, error) {
+		return digiflazz.TxResult{RefID: r.RefID, SKU: r.SKU, Status: "Gagal", RC: "44"}, nil
+	}
+	seedProduct(t, e, 90, "auto", "regular")
+	seedSKU(t, e, 90, 0, "primary")
+	seedPrice(t, e, "primary", "seller-a", 12000, true)
+	seedTemplate(t, e, "seller-a", "MLBB", "{player_id}")
+	o := itemku.Order{
+		OrderID: 90, OrderNumber: "OD-90", ProductID: 90, Price: 15000, Quantity: 1, OrderIncome: 13500,
+		GameName: "MLBB", ProductName: "Product", Status: "REQUIRE_PROCESS",
+		RequiredInformation: `{"player_id":"123"}`, OrderCreatedEpoch: testNow.Unix(),
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := e.Intake(context.Background(), o); err != nil {
+				t.Errorf("Intake: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if got := df.topupCount(); got != 1 {
+		t.Fatalf("Topup calls = %d, want 1", got)
+	}
+	if got := len(tg.messages()); got != 1 {
+		t.Fatalf("alerts = %d, want 1", got)
+	}
+	if state, _ := orderState(t, e, "ik-90"); state != StateNeedsYou {
+		t.Fatalf("state = %s, want needs_you", state)
+	}
+}
+
+func TestManualBuyTrimsCustomerNo(t *testing.T) {
+	e, ik, df, _ := newTestEngine(t)
+	id := setupAutoOrder(t, e, "regular", 91)
+	mustExec(t, e, `UPDATE orders SET state = 'needs_you' WHERE id = ?`, id)
+	ik.orders[91] = itemku.Order{OrderID: 91, Status: "REQUIRE_PROCESS"}
+
+	if err := e.BuyManual(context.Background(), id, BuyOpts{CustomerNo: "  456 \n"}); err != nil {
+		t.Fatalf("BuyManual: %v", err)
+	}
+	if reqs := df.requests(); len(reqs) != 1 || reqs[0].CustomerNo != "456" {
+		t.Fatalf("topups = %#v, want one with customer_no 456", reqs)
+	}
+}
+
+func TestDeliveredOnItemkuClosesOnRetryAndPreBuy(t *testing.T) {
+	e, ik, df, _ := newTestEngine(t)
+	id := setupAutoOrder(t, e, "regular", 92)
+	mustExec(t, e, `UPDATE orders SET state = 'needs_you' WHERE id = ?`, id)
+	ik.orders[92] = itemku.Order{OrderID: 92, Status: "DELIVERED"}
+	if err := e.BuyManual(context.Background(), id, BuyOpts{}); err == nil {
+		t.Fatal("BuyManual() error = nil, want refusal")
+	}
+	if o, _ := e.loadOrder(context.Background(), id); o.State != StateDelivered || o.Detail != "closed on itemku" {
+		t.Fatalf("state/detail = %s/%q, want delivered/closed on itemku", o.State, o.Detail)
+	}
+
+	id = setupAutoOrderNoSeed(t, e, 92, 93)
+	mustExec(t, e, `UPDATE orders SET deadline_at = ? WHERE id = ?`, testNow.Unix()+10, id)
+	ik.orders[93] = itemku.Order{OrderID: 93, Status: "DELIVERED"}
+	if err := e.BuyAuto(context.Background(), id); err != nil {
+		t.Fatalf("BuyAuto: %v", err)
+	}
+	if o, _ := e.loadOrder(context.Background(), id); o.State != StateDelivered || o.Detail != "closed on itemku" {
+		t.Fatalf("pre-buy state/detail = %s/%q, want delivered/closed on itemku", o.State, o.Detail)
+	}
+	if df.topupCount() != 0 {
+		t.Fatalf("Topup calls = %d, want 0", df.topupCount())
+	}
+}
+
+// setupAutoOrderNoSeed adds another order for an already seeded product.
+func setupAutoOrderNoSeed(t *testing.T, e *Engine, productID, itemkuID int64) string {
+	t.Helper()
+	id := "ik-" + itoa(itemkuID)
+	insertTestOrder(t, e, id, itemkuID, productID, 1, `{"player_id":"123"}`, testNow.Unix()-60)
+	mustExec(t, e, `UPDATE orders SET customer_no = '123', sku_override = 'primary' WHERE id = ?`, id)
+	return id
+}

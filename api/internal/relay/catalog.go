@@ -61,6 +61,10 @@ func (e *Engine) SyncPriceList(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("relay: fetch digiflazz price list: %w", err)
 	}
+	// An empty list is never real: replacing with it would turn every product off.
+	if len(items) == 0 {
+		return errors.New("relay: digiflazz returned an empty price list; keeping the cached one")
+	}
 
 	tx, err := e.DB.DB.BeginTx(ctx, nil)
 	if err != nil {
@@ -215,11 +219,13 @@ func (e *Engine) evaluateProducts(ctx context.Context) error {
 		p := &products[i]
 		sku, ok := primaries[p.ID]
 		if !ok {
-			sku = ""
+			// Not linked yet: nothing to evaluate. Turning it off would stop
+			// every unlinked product from selling on the first sync.
+			continue
 		}
 		item, listed := prices[sku]
 		seller := ""
-		if sku != "" && listed {
+		if listed {
 			seller = item.SellerName
 		}
 
@@ -352,9 +358,6 @@ func autoLike(p *productRow) bool {
 
 func (e *Engine) unavailableReason(ctx context.Context, p *productRow, sku string,
 	item digiflazz.PriceItem, listed bool, now time.Time, minMargin int64) string {
-	if sku == "" {
-		return "no_sku"
-	}
 	if !listed {
 		return "not_listed"
 	}

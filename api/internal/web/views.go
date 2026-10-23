@@ -80,9 +80,9 @@ type QueueResponse struct {
 }
 
 type QueueStats struct {
-	Balance   int64 `json:"balance"`
-	AutoToday int64 `json:"autoToday"`
-	SentToday int64 `json:"sentToday"`
+	Balance   *int64 `json:"balance"`
+	AutoToday int64  `json:"autoToday"`
+	SentToday int64  `json:"sentToday"`
 }
 
 // ProductView is one item in a Products group.
@@ -424,10 +424,10 @@ func (s *server) optionsForOrder(ctx context.Context, rec *orderRecord) ([]SkuOp
 
 func (s *server) queueStats(ctx context.Context) QueueStats {
 	var stats QueueStats
-	if s.relay.DF != nil {
-		if balance, err := s.relay.DF.Balance(ctx); err == nil {
-			stats.Balance = balance
-		}
+	// The balance loop stores it; calling Digiflazz on every 5 s queue poll
+	// would flood cek-saldo. Nil (never fetched) shows as unknown, not Rp 0.
+	if n, err := strconv.ParseInt(s.settingString(ctx, "balance"), 10, 64); err == nil {
+		stats.Balance = &n
 	}
 	start := startOfWIBDay(s.now())
 	_ = s.relay.DB.DB.QueryRowContext(ctx,

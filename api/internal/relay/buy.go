@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"wongkito/api/internal/digiflazz"
 	"wongkito/api/internal/itemku"
@@ -41,7 +42,9 @@ func (e *Engine) BuyAuto(ctx context.Context, id string) error {
 	if o == nil {
 		return fmt.Errorf("relay: order %s not found", id)
 	}
-	if isFinal(o.State) || o.Source != "itemku" {
+	// Route checks for new outside the lock; a callback and the poll can both
+	// get here. Only the first caller may buy.
+	if o.State != StateNew || o.Source != "itemku" {
 		return nil
 	}
 	ok, err := e.preBuyCheck(ctx, *o)
@@ -173,8 +176,10 @@ func (e *Engine) BuyManual(ctx context.Context, id string, opts BuyOpts) error {
 			return err
 		}
 		if fresh == nil || fresh.Status != "REQUIRE_PROCESS" {
-			if fresh != nil && fresh.Status == "REFUNDED" {
-				_ = e.setOrderState(ctx, id, StateCancelled, "", "")
+			if fresh != nil {
+				if _, err := e.closeFromItemku(ctx, id, fresh.Status); err != nil {
+					return err
+				}
 			}
 			return fmt.Errorf("relay: order %s is no longer REQUIRE_PROCESS", id)
 		}
@@ -201,7 +206,7 @@ func (e *Engine) BuyManual(ctx context.Context, id string, opts BuyOpts) error {
 	if sku == "" {
 		return fmt.Errorf("relay: order %s has no SKU", id)
 	}
-	customerNo := opts.CustomerNo
+	customerNo := strings.TrimSpace(opts.CustomerNo)
 	if customerNo == "" {
 		customerNo, err = e.customerNoFor(ctx, *o, p, sku)
 		if err != nil {
@@ -445,6 +450,12 @@ func (e *Engine) preBuyCheck(ctx context.Context, o order) (bool, error) {
 		return false, err
 	}
 	if fresh == nil || fresh.Status != "REQUIRE_PROCESS" {
+		if fresh != nil {
+			closed, err := e.closeFromItemku(ctx, o.ID, fresh.Status)
+			if err != nil || closed {
+				return false, err
+			}
+		}
 		if err := e.setOrderState(ctx, o.ID, StateCancelled, "", ""); err != nil {
 			return false, err
 		}

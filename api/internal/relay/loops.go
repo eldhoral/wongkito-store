@@ -21,6 +21,7 @@ const (
 
 type loop struct {
 	name     string
+	service  string // last_error_<service> gets the tick's error; "" only logs
 	interval time.Duration
 	fn       func(context.Context) error
 }
@@ -30,18 +31,17 @@ type loop struct {
 // API call never delays the other loops.
 func (e *Engine) Run(ctx context.Context) {
 	e.run(ctx, []loop{
-		{"poll orders", pollInterval, e.PollOrders},
-		{"recheck pending", recheckInterval, e.RecheckPending},
-		{"sync catalog", catalogInterval, func(ctx context.Context) error {
+		{"poll orders", "itemku", pollInterval, e.PollOrders},
+		{"recheck pending", "digiflazz", recheckInterval, e.RecheckPending},
+		{"sync catalog", "", catalogInterval, func(ctx context.Context) error {
 			productErr := e.SyncProducts(ctx)
 			priceErr := e.SyncPriceList(ctx)
-			if productErr != nil {
-				return productErr
-			}
-			return priceErr
+			e.NoteError("itemku", productErr)
+			e.NoteError("digiflazz", priceErr)
+			return errors.Join(productErr, priceErr)
 		}},
-		{"check balance", balanceInterval, e.CheckBalance},
-		{"reminders", reminderInterval, e.Reminders},
+		{"check balance", "digiflazz", balanceInterval, e.CheckBalance},
+		{"reminders", "", reminderInterval, e.Reminders},
 	})
 }
 
@@ -51,23 +51,23 @@ func (e *Engine) run(ctx context.Context, loops []loop) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			e.every(ctx, &wg, l.name, l.interval, l.fn)
+			e.every(ctx, &wg, l)
 		}()
 	}
 	wg.Wait()
 }
 
 // every returns when ctx is done; ticks it spawned are tracked by wg.
-func (e *Engine) every(ctx context.Context, wg *sync.WaitGroup, name string, interval time.Duration, fn func(context.Context) error) {
+func (e *Engine) every(ctx context.Context, wg *sync.WaitGroup, l loop) {
 	tick := func() {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			e.runTick(ctx, name, fn)
+			e.runTick(ctx, l)
 		}()
 	}
 	tick()
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(l.interval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -79,14 +79,17 @@ func (e *Engine) every(ctx context.Context, wg *sync.WaitGroup, name string, int
 	}
 }
 
-func (e *Engine) runTick(ctx context.Context, name string, fn func(context.Context) error) {
+func (e *Engine) runTick(ctx context.Context, l loop) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("relay: %s panicked: %v", name, r)
+			log.Printf("relay: %s panicked: %v", l.name, r)
 		}
 	}()
-	if err := fn(ctx); err != nil {
-		log.Printf("relay: %s: %v", name, err)
+	if err := l.fn(ctx); err != nil {
+		log.Printf("relay: %s: %v", l.name, err)
+		if l.service != "" && ctx.Err() == nil {
+			e.NoteError(l.service, err)
+		}
 	}
 }
 
@@ -96,6 +99,11 @@ func (e *Engine) PollOrders(ctx context.Context) error {
 	now := e.now()
 	orders, err := e.IK.ListOpen(ctx, now.Add(-48*time.Hour), 30)
 	if err != nil {
+		// last_poll_at is the last success. Zero (never succeeded) also alerts.
+		if lastOK := e.settingInt(ctx, "last_poll_at"); now.Unix()-lastOK > int64((5*time.Minute)/time.Second) {
+			e.alertOnce(ctx, "poll_failing", time.Hour,
+				fmt.Sprintf("itemku poll has been failing for over 5 minutes: %v", err), true)
+		}
 		return fmt.Errorf("relay: list open itemku orders: %w", err)
 	}
 	_ = e.setSetting(ctx, "last_poll_at", strconv.FormatInt(now.Unix(), 10))
@@ -161,7 +169,7 @@ func (e *Engine) PollOrders(ctx context.Context) error {
 		if fresh == nil {
 			continue
 		}
-		if err := e.MarkCancelledIfRefunded(ctx, *fresh); err != nil && firstErr == nil {
+		if err := e.CloseIfClosedOnItemku(ctx, *fresh); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -174,12 +182,17 @@ func (e *Engine) NoteCallback() {
 	_ = e.setSetting(context.Background(), "last_callback_at", strconv.FormatInt(e.now().Unix(), 10))
 }
 
-// CheckBalance alerts when the Digiflazz balance falls below the threshold.
+// CheckBalance stores the Digiflazz balance for the queue screen and alerts
+// when it falls below the threshold.
 func (e *Engine) CheckBalance(ctx context.Context) error {
 	balance, err := e.DF.Balance(ctx)
 	if err != nil {
 		return fmt.Errorf("relay: check digiflazz balance: %w", err)
 	}
+	if err := e.setSetting(ctx, "balance", strconv.FormatInt(balance, 10)); err != nil {
+		return err
+	}
+	_ = e.setSetting(ctx, "balance_at", strconv.FormatInt(e.now().Unix(), 10))
 	threshold := e.settingInt(ctx, "balance_alert")
 	if threshold > 0 && balance < threshold {
 		e.alertOnce(ctx, "balance_low", 6*time.Hour,

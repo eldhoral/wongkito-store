@@ -106,7 +106,7 @@ func TestDirectFailCancel(t *testing.T) {
 		t.Fatalf("state = %s, want needs_you", o.State)
 	}
 
-	if err := e.Cancel(context.Background(), id); err != nil {
+	if err := e.Cancel(context.Background(), id, false); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 	o, err = e.loadOrder(context.Background(), id)
@@ -131,6 +131,9 @@ func TestWhatsAppLink(t *testing.T) {
 		if got := WhatsAppLink(number, "x"); !strings.HasPrefix(got, wantPrefix) {
 			t.Fatalf("WhatsAppLink(%q) = %q, want prefix %q", number, got, wantPrefix)
 		}
+	}
+	if got := WhatsAppLink("0812", "Halo Budi"); !strings.HasSuffix(got, "?text=Halo%20Budi") {
+		t.Fatalf("WhatsAppLink = %q, want spaces as %%20", got)
 	}
 	if got := WhatsAppLink("", "x"); got != "" {
 		t.Fatalf("WhatsAppLink(empty) = %q, want empty", got)
@@ -170,5 +173,55 @@ func TestDirectBuyErrorStillReturnsID(t *testing.T) {
 	}
 	if o, lerr := e.loadOrder(context.Background(), id); lerr != nil || o == nil {
 		t.Fatalf("order %s not stored: %v", id, lerr)
+	}
+}
+
+func TestDirectSameClientIDBuysOnce(t *testing.T) {
+	e, _, df, _ := newTestEngine(t)
+	seedProduct(t, e, 64, "auto", "regular")
+	seedSKU(t, e, 64, 0, "primary")
+	seedPrice(t, e, "primary", "seller-a", 10000, true)
+	seedTemplate(t, e, "seller-a", "MLBB", "{player_id}")
+	req := DirectReq{ProductID: 64, Fields: map[string]string{"player_id": "999"}, ClientID: "4f1c2b9e-0d6a-4c1e-9a55-1b2c3d4e5f60"}
+
+	first, err := e.CreateDirect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("first CreateDirect: %v", err)
+	}
+	second, err := e.CreateDirect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("second CreateDirect: %v", err)
+	}
+	if first != second || first != "dir-"+req.ClientID {
+		t.Fatalf("ids = %q / %q, want both dir-<clientId>", first, second)
+	}
+	var n int
+	if err := e.DB.DB.QueryRow(`SELECT COUNT(*) FROM orders`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("orders = %d (%v), want 1", n, err)
+	}
+	if df.topupCount() != 1 {
+		t.Fatalf("Topup calls = %d, want 1", df.topupCount())
+	}
+
+	if _, err := e.CreateDirect(context.Background(), DirectReq{ProductID: 64, Fields: req.Fields, ClientID: "bad id!"}); err == nil {
+		t.Fatal("CreateDirect(bad clientId) error = nil, want refusal")
+	}
+}
+
+func TestCancelForce(t *testing.T) {
+	e, _, _, _ := newTestEngine(t)
+	mustExec(t, e, `INSERT INTO orders (id, source, order_number, game_name, product_name, price, quantity,
+		order_income, required_info, state, created_at, updated_at)
+		VALUES ('dir-f', 'direct', 'dir-f', 'MLBB', 'Product', 0, 1, 0, '{}', 'needs_you', 1, 1)`)
+	insertAttemptRow(t, e, "rf", "dir-f", 0, 1, "primary", "1", "Sukses", 1)
+
+	if err := e.Cancel(context.Background(), "dir-f", false); err == nil {
+		t.Fatal("Cancel() error = nil, want refusal while a unit is Sukses")
+	}
+	if err := e.Cancel(context.Background(), "dir-f", true); err != nil {
+		t.Fatalf("forced Cancel: %v", err)
+	}
+	if state, _ := orderState(t, e, "dir-f"); state != StateCancelled {
+		t.Fatalf("state = %s, want cancelled", state)
 	}
 }

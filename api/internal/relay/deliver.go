@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 
 	"wongkito/api/internal/digiflazz"
@@ -116,6 +117,13 @@ func (e *Engine) RecheckPending(ctx context.Context) error {
 		}
 	}
 
+	if err := e.alertLongOpen(ctx); err != nil && firstErr == nil {
+		firstErr = err
+	}
+	if err := e.settleStuckBuying(ctx); err != nil && firstErr == nil {
+		firstErr = err
+	}
+
 	rows, err = e.DB.DB.QueryContext(ctx, `SELECT id FROM orders WHERE state = ?`, StateDelivering)
 	if err != nil {
 		return err
@@ -140,6 +148,89 @@ func (e *Engine) RecheckPending(ctx context.Context) error {
 	return firstErr
 }
 
+// alertLongOpen tells the owner once about every attempt Digiflazz has left
+// open (unknown or Pending) for over 30 minutes: its order is stuck in processing.
+func (e *Engine) alertLongOpen(ctx context.Context) error {
+	rows, err := e.DB.DB.QueryContext(ctx,
+		`SELECT a.ref_id, o.order_number, o.game_name, o.product_name
+		 FROM attempts a JOIN orders o ON o.id = a.order_id
+		 WHERE a.status IN ('Pending', 'unknown') AND a.created_at < ?
+		   AND o.state NOT IN (?, ?, ?)`,
+		e.now().Unix()-30*60, StateDelivered, StateRejected, StateCancelled)
+	if err != nil {
+		return err
+	}
+	type open struct{ ref, number, game, product string }
+	var list []open
+	for rows.Next() {
+		var a open
+		if err := rows.Scan(&a.ref, &a.number, &a.game, &a.product); err != nil {
+			rows.Close()
+			return err
+		}
+		list = append(list, a)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, a := range list {
+		if err := e.alertOnce(ctx, "open30:"+a.ref, 0, fmt.Sprintf(
+			"%s — %s — order %s: Digiflazz transaction %s still has no final status after 30 minutes; check it in the Digiflazz dashboard",
+			a.game, a.product, a.number, a.ref), false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// settleStuckBuying recovers orders left in buying (a DB error or a cancelled
+// context between setting buying and recording the attempts). The attempts
+// decide: all Sukses delivers, an open one waits in processing, and none or
+// only Gagal goes to the owner with an alert.
+func (e *Engine) settleStuckBuying(ctx context.Context) error {
+	rows, err := e.DB.DB.QueryContext(ctx,
+		`SELECT id FROM orders WHERE state = ? AND updated_at < ?`, StateBuying, e.now().Unix()-120)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	var firstErr error
+	for _, id := range ids {
+		if err := e.settleIfBuying(ctx, id); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (e *Engine) settleIfBuying(ctx context.Context, id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	o, err := e.loadOrder(ctx, id)
+	if err != nil || o == nil || o.State != StateBuying {
+		return err // a buy that held the lock has moved it on
+	}
+	outcome, err := e.settlePurchases(ctx, id, true, "")
+	if err != nil {
+		return err
+	}
+	if outcome == buySuccess {
+		return e.deliverLocked(ctx, id)
+	}
+	return nil
+}
+
 // Deliver marks the order delivered on itemku. A timeout or non-200 response
 // is never assumed: itemku is re-read first, and ORDER_DELIVERED is success.
 func (e *Engine) Deliver(ctx context.Context, id string) error {
@@ -156,7 +247,12 @@ func (e *Engine) deliverLocked(ctx context.Context, id string) error {
 	if o == nil || o.State == StateDelivered || o.State == StateRejected || o.State == StateCancelled {
 		return nil
 	}
-	if o.Source == "direct" || e.DryRun {
+	if o.Source == "direct" {
+		return e.markDelivered(ctx, id)
+	}
+	if e.DryRun {
+		// Spec: in dry run the itemku DELIVER is logged, not sent.
+		log.Printf("relay: dry run: skipped itemku DELIVER for order %s (itemku id %d)", id, o.ItemkuOrderID.Int64)
 		return e.markDelivered(ctx, id)
 	}
 	if !o.ItemkuOrderID.Valid {
@@ -192,11 +288,9 @@ func (e *Engine) deliverLocked(ctx context.Context, id string) error {
 	if err := e.toQueue(ctx, id, ReasonDeliverFailed, detail); err != nil {
 		return err
 	}
-	if e.TG != nil {
-		_ = e.TG.Send(ctx, fmt.Sprintf(
-			"%s — %s — order %s: deliver failed (%s); money may be spent",
-			o.GameName, o.ProductName, o.OrderNumber, fresh.Status), true)
-	}
+	e.alert(ctx, fmt.Sprintf(
+		"%s — %s — order %s: deliver failed (%s); money may be spent",
+		o.GameName, o.ProductName, o.OrderNumber, fresh.Status), true)
 	return nil
 }
 
@@ -248,8 +342,9 @@ func (e *Engine) Reject(ctx context.Context, id, reason string, force bool) erro
 }
 
 // Cancel closes a direct order without any external call. Money is refunded
-// to the buyer outside the app.
-func (e *Engine) Cancel(ctx context.Context, id string) error {
+// to the buyer outside the app. Like Reject, it refuses while a unit is
+// successful or still open, unless force is set (the owner confirmed).
+func (e *Engine) Cancel(ctx context.Context, id string, force bool) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
@@ -266,49 +361,75 @@ func (e *Engine) Cancel(ctx context.Context, id string) error {
 	if isFinal(o.State) {
 		return nil
 	}
-	open, err := e.hasAttemptsIn(ctx, id, "Sukses", "Pending", "unknown")
-	if err != nil {
-		return err
-	}
-	if open {
-		return fmt.Errorf("relay: order %s has a successful or open attempt", id)
+	if !force {
+		open, err := e.hasAttemptsIn(ctx, id, "Sukses", "Pending", "unknown")
+		if err != nil {
+			return err
+		}
+		if open {
+			return fmt.Errorf("relay: order %s has a successful or open attempt", id)
+		}
 	}
 	return e.setOrderState(ctx, id, StateCancelled, "", "")
 }
 
-// MarkCancelledIfRefunded is called by the poll. It records itemku's refund
-// and warns loudly when money may already have been spent.
-func (e *Engine) MarkCancelledIfRefunded(ctx context.Context, o itemku.Order) error {
-	if o.Status != "REFUNDED" {
+// CloseIfClosedOnItemku is called with a fresh itemku read (poll, callback).
+// It records an order the owner or itemku closed outside the app.
+func (e *Engine) CloseIfClosedOnItemku(ctx context.Context, o itemku.Order) error {
+	if o.Status != "REFUNDED" && o.Status != "DELIVERED" {
 		return nil
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	var id, state string
+	var id string
 	err := e.DB.DB.QueryRowContext(ctx,
-		`SELECT id, state FROM orders WHERE itemku_order_id = ?`, o.OrderID).Scan(&id, &state)
+		`SELECT id FROM orders WHERE itemku_order_id = ?`, o.OrderID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if isFinal(state) {
-		return nil
+	_, err = e.closeFromItemku(ctx, id, o.Status)
+	return err
+}
+
+// closeFromItemku maps itemku's DELIVERED/REFUNDED onto a non-final order and
+// warns loudly when money may already have been spent here. It reports whether
+// the status was one it handles. The caller holds e.mu.
+func (e *Engine) closeFromItemku(ctx context.Context, id, itemkuStatus string) (bool, error) {
+	var state, detail, warn string
+	switch itemkuStatus {
+	case "DELIVERED":
+		state, detail = StateDelivered, "closed on itemku"
+		warn = "order %s was delivered on itemku outside the app, but a purchase here succeeded or is still open; money may be spent twice"
+	case "REFUNDED":
+		state, detail = StateCancelled, "itemku refunded the order"
+		warn = "order %s was refunded by itemku but money may be spent on a cancelled order"
+	default:
+		return false, nil
+	}
+	o, err := e.loadOrder(ctx, id)
+	if err != nil || o == nil || isFinal(o.State) {
+		return true, err
 	}
 	spent, err := e.hasAttemptsIn(ctx, id, "Sukses", "Pending", "unknown")
 	if err != nil {
-		return err
+		return true, err
 	}
-	if spent && e.TG != nil {
-		_ = e.TG.Send(ctx, fmt.Sprintf(
-			"order %s was refunded by itemku but money may be spent on a cancelled order", id), true)
+	if spent {
+		e.alert(ctx, fmt.Sprintf(warn, id), true)
 	}
-	if err := e.setOrderState(ctx, id, StateCancelled, "", "itemku refunded the order"); err != nil {
-		return err
+	now := e.now().Unix()
+	var deliveredAt any
+	if state == StateDelivered {
+		deliveredAt = now
 	}
-	return nil
+	_, err = e.DB.DB.ExecContext(ctx,
+		`UPDATE orders SET state = ?, reason = '', detail = ?, delivered_at = COALESCE(?, delivered_at), updated_at = ?
+		 WHERE id = ?`, state, detail, deliveredAt, now, id)
+	return true, err
 }
 
 func (e *Engine) hasAttemptsIn(ctx context.Context, orderID string, statuses ...string) (bool, error) {

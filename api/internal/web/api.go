@@ -135,7 +135,14 @@ func (s *server) rejectOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) cancelOrder(w http.ResponseWriter, r *http.Request) {
-	if err := s.relay.Cancel(r.Context(), r.PathValue("id")); err != nil {
+	var req struct {
+		Force bool `json:"force"`
+	}
+	// The body is optional: an empty one means no force.
+	if r.ContentLength != 0 && !decodeBody(w, r, &req) {
+		return
+	}
+	if err := s.relay.Cancel(r.Context(), r.PathValue("id"), req.Force); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -399,8 +406,19 @@ func (s *server) putTemplate(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "seller and game are required"})
 		return
 	}
-	if len(tmpl.Keys(req.Template)) == 0 {
+	keys := tmpl.Keys(req.Template)
+	if len(keys) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "template needs at least one placeholder"})
+		return
+	}
+	// Render with sample values: catches invalid placeholders and stray braces
+	// ("{player_id}|{zone_id" would otherwise send a half-filled number).
+	sample := make(map[string]string, len(keys))
+	for _, k := range keys {
+		sample[k] = "1"
+	}
+	if _, err := tmpl.Render(req.Template, sample); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	if _, err := s.relay.DB.DB.ExecContext(r.Context(),
@@ -481,6 +499,8 @@ func (s *server) telegramTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.relay.TG.Send(r.Context(), "wongkito: Telegram test", false); err != nil {
+		// Bot.Send keeps the token out of its errors, so this is safe to show.
+		s.relay.NoteError("telegram", err)
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
 		return
 	}
