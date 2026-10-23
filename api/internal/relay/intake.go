@@ -212,6 +212,4 @@ func (e *Engine) skuIsMulti(ctx context.Context, sku string) (bool, error) {
 	return multi != 0, nil
 }
 
-// BuyAuto is implemented in buy.go (Task 7). This placeholder keeps routing
-// testable while the buying engine is built.
-func (e *Engine) BuyAuto(context.Context, string) error { return nil }
+// BuyAuto is implemented in buy.go.
