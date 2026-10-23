@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatCountdown, formatRp, urgency } from './format';
+import { formatAge, formatCountdown, formatRp, urgency } from './format';
 
 describe('formatRp', () => {
   it('groups with dots and an ASCII space', () => {
@@ -31,5 +31,11 @@ describe('urgency', () => {
   });
   it('is late past the deadline', () => {
     expect(urgency(now - 1, now - 600, now)).toBe('late');
+  });
+});
+
+describe('formatAge', () => {
+  it('picks the coarsest unit', () => {
+    expect([30, 120, 7200, 172800, -5].map(formatAge)).toEqual(['now', '2m', '2h', '2d', 'now']);
   });
 });

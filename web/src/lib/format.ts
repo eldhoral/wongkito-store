@@ -22,3 +22,12 @@ export function urgency(deadlineAt: number | null, createdAt: number, now: numbe
   if (left <= 0) return 'late';
   return left < (deadlineAt - createdAt) * 0.25 ? 'warn' : 'calm';
 }
+
+// Seconds since an event as "now", "5m", "3h", "2d".
+export function formatAge(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  if (s < 60) return 'now';
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h`;
+  return `${Math.floor(s / 86400)}d`;
+}

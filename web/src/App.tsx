@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { api, setUnauthorizedHandler } from './api/client';
 import { TabBar, type Tab } from './components/TabBar';
 import { Login } from './screens/Login';
+import { Queue } from './screens/Queue';
 
 const TABS: Tab[] = ['queue', 'products', 'history', 'settings'];
 
@@ -17,9 +18,9 @@ function useTab(): Tab {
   return (TABS as string[]).includes(name) ? (name as Tab) : 'queue';
 }
 
-// Tasks 16-19 replace these placeholders.
+// Tasks 17-19 replace these placeholders.
 const SCREENS: Record<Tab, () => React.ReactNode> = {
-  queue: () => <Placeholder title="Queue" />,
+  queue: () => <Queue />,
   products: () => <Placeholder title="Products" />,
   history: () => <Placeholder title="History" />,
   settings: () => <Placeholder title="Settings" />,
