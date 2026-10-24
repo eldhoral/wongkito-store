@@ -189,3 +189,21 @@ func TestCheckBalanceStoresBalance(t *testing.T) {
 		t.Fatalf("balance_at = %d, want %d", got, testNow.Unix())
 	}
 }
+
+func TestPriceListFetchedAtMostOncePerInterval(t *testing.T) {
+	e, _, df, _ := newTestEngine(t)
+	df.priceListErr = errors.New("rc 83 limit")
+	now := testNow
+	e.Now = func() time.Time { return now }
+
+	_ = e.syncPriceListIfDue(context.Background()) // startup: fetches, even though it fails
+	_ = e.syncPriceListIfDue(context.Background()) // restart right after: skipped
+	if df.priceListCalls != 1 {
+		t.Fatalf("price list calls = %d, want 1 within the interval", df.priceListCalls)
+	}
+	now = now.Add(catalogInterval)
+	_ = e.syncPriceListIfDue(context.Background())
+	if df.priceListCalls != 2 {
+		t.Fatalf("price list calls = %d, want 2 after the interval", df.priceListCalls)
+	}
+}

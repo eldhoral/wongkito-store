@@ -35,7 +35,7 @@ func (e *Engine) Run(ctx context.Context) {
 		{"recheck pending", "digiflazz", recheckInterval, e.RecheckPending},
 		{"sync catalog", "", catalogInterval, func(ctx context.Context) error {
 			productErr := e.SyncProducts(ctx)
-			priceErr := e.SyncPriceList(ctx)
+			priceErr := e.syncPriceListIfDue(ctx)
 			e.NoteError("itemku", productErr)
 			e.NoteError("digiflazz", priceErr)
 			return errors.Join(productErr, priceErr)
@@ -271,4 +271,17 @@ func (e *Engine) setSetting(ctx context.Context, key, value string) error {
 		`INSERT INTO settings (key, value) VALUES (?, ?)
 		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`, key, value)
 	return err
+}
+
+// syncPriceListIfDue fetches the Digiflazz price list unless the last request,
+// failed or not, was less than one catalog interval ago. Digiflazz rate-limits
+// the price list (rc 83), and every restart or deploy would otherwise fetch it
+// again straight away.
+func (e *Engine) syncPriceListIfDue(ctx context.Context) error {
+	now := e.now().Unix()
+	if last := e.settingInt(ctx, "last_price_fetch_at"); last > 0 && now-last < int64((catalogInterval - time.Minute).Seconds()) { // slack for ticker jitter
+		return nil
+	}
+	_ = e.setSetting(ctx, "last_price_fetch_at", strconv.FormatInt(now, 10))
+	return e.SyncPriceList(ctx)
 }

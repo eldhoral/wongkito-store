@@ -90,13 +90,14 @@ func (f *fakeIK) deliverCount() int {
 }
 
 type fakeDF struct {
-	mu           sync.Mutex
-	topupReqs    []digiflazz.TopupReq
-	topupFn      func(digiflazz.TopupReq) (digiflazz.TxResult, error)
-	priceList    []digiflazz.PriceItem
-	priceListErr error
-	balance      int64
-	balanceErr   error
+	mu             sync.Mutex
+	topupReqs      []digiflazz.TopupReq
+	topupFn        func(digiflazz.TopupReq) (digiflazz.TxResult, error)
+	priceList      []digiflazz.PriceItem
+	priceListCalls int
+	priceListErr   error
+	balance        int64
+	balanceErr     error
 }
 
 func (f *fakeDF) Topup(_ context.Context, r digiflazz.TopupReq) (digiflazz.TxResult, error) {
@@ -116,6 +117,7 @@ func (f *fakeDF) Topup(_ context.Context, r digiflazz.TopupReq) (digiflazz.TxRes
 func (f *fakeDF) PriceList(_ context.Context) ([]digiflazz.PriceItem, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.priceListCalls++
 	if f.priceListErr != nil {
 		return nil, f.priceListErr
 	}
