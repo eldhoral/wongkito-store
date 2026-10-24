@@ -1,0 +1,84 @@
+name: test-and-deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci
+      - run: make test
+      - run: cd api && go vet ./...
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod
+          cache-dependency-path: api/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci
+      # Oracle Ampere A1 is ARM; modernc sqlite is pure Go, so no cgo needed.
+      - run: make build
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: "0"
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+      - name: Upload and restart
+        env:
+          TARGET: ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes"
+          scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes bin/wongkito "$TARGET:/opt/wongkito/wongkito.new"
+          $SSH "$TARGET" 'bash -s' <<'EOF'
+          set -eu
+          cd /opt/wongkito
+          chmod 755 wongkito.new
+          [ -f wongkito ] && cp -p wongkito wongkito.prev
+          mv -f wongkito.new wongkito
+          sudo systemctl restart wongkito
+          sleep 5
+          if ! systemctl is-active --quiet wongkito || ! curl -fsS -o /dev/null http://127.0.0.1:8080/; then
+            echo "new binary unhealthy, rolling back" >&2
+            if [ -f wongkito.prev ]; then
+              mv -f wongkito.prev wongkito
+              sudo systemctl restart wongkito
+            fi
+            exit 1
+          fi
+          echo deployed
+          EOF
