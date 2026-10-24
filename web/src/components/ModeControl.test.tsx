@@ -15,7 +15,7 @@ vi.mock('../api/client', async (orig) => ({
 
 const product = (over: Partial<ProductView> = {}): ProductView => ({
   id: 7, name: '172 Diamonds', mode: 'auto', offReason: '', deadlineClass: 'regular', stockLocked: false,
-  cost: 44000, price: 45000, net: 44000, margin: 0, skus: ['A'], ...over,
+  cost: 44000, price: 45000, stock: 10, net: 44000, margin: 0, skus: ['A'], ...over,
 });
 
 function setup(p: ProductView) {

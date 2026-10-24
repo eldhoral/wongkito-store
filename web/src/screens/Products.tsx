@@ -7,10 +7,11 @@ import { ModeControl, STOCK_LOCKED_TEXT } from '../components/ModeControl';
 import { ProductSheet } from '../components/ProductSheet';
 import { formatRp } from '../lib/format';
 
-type Filter = 'all' | 'auto' | 'off' | 'unlinked';
+type Filter = 'all' | 'active' | 'auto' | 'off' | 'unlinked';
 
 const FILTERS: { id: Filter; label: string; test: (p: ProductView) => boolean }[] = [
   { id: 'all', label: 'All', test: () => true },
+  { id: 'active', label: 'Active', test: (p) => p.stock > 0 },
   { id: 'auto', label: 'Auto', test: (p) => p.mode === 'auto' },
   { id: 'off', label: 'Off', test: (p) => p.mode === 'off' },
   { id: 'unlinked', label: 'Unlinked', test: (p) => p.skus.length === 0 },

@@ -85,6 +85,7 @@ export interface ProductView {
   stockLocked: boolean;
   cost: number;
   price: number;
+  stock: number; // itemku stock from the last catalog sync
   net: number;
   margin: number;
   skus: string[];

@@ -17,7 +17,7 @@ const group: ProductGroup = {
   seller: 'Seller C',
   template: '',
   items: [
-    { id: 1, name: 'Saldo 50.000', mode: 'manual', offReason: '', deadlineClass: 'regular', stockLocked: false, cost: 50120, price: 51500, net: 50000, margin: 0, skus: ['D50'] },
+    { id: 1, name: 'Saldo 50.000', mode: 'manual', offReason: '', deadlineClass: 'regular', stockLocked: false, cost: 50120, price: 51500, stock: 10, net: 50000, margin: 0, skus: ['D50'] },
   ],
 };
 

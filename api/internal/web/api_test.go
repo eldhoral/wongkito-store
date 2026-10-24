@@ -349,3 +349,28 @@ func TestOrderViewSubtractsAdsFee(t *testing.T) {
 		t.Fatalf("option margin = %v, want 6000", got.Options)
 	}
 }
+
+func TestProductsIncludeStock(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	seedAPIProduct(t, s, 90, "MLBB", "manual")
+	seedAPIProduct(t, s, 91, "MLBB", "manual")
+	apiExec(t, s, `UPDATE products SET itemku_stock = 0 WHERE id = 91`)
+
+	rr := apiDo(t, s, http.MethodGet, "/api/products", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body.String())
+	}
+	var groups []Group
+	if err := json.Unmarshal(rr.Body.Bytes(), &groups); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	stock := map[int64]int64{}
+	for _, g := range groups {
+		for _, p := range g.Items {
+			stock[p.ID] = p.Stock
+		}
+	}
+	if stock[90] != 10 || stock[91] != 0 {
+		t.Fatalf("stock = %v, want 90:10 91:0", stock)
+	}
+}

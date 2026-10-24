@@ -96,6 +96,7 @@ type ProductView struct {
 	StockLocked   bool     `json:"stockLocked"`
 	Cost          int64    `json:"cost"`
 	Price         int64    `json:"price"`
+	Stock         int64    `json:"stock"` // itemku stock from the last catalog sync
 	Net           int64    `json:"net"`
 	Margin        int64    `json:"margin"`
 	SKUs          []string `json:"skus"`
@@ -455,7 +456,7 @@ func (s *server) now() time.Time {
 
 func (s *server) productGroups(ctx context.Context) ([]Group, error) {
 	rows, err := s.relay.DB.DB.QueryContext(ctx,
-		`SELECT id, name, game_name, itemku_price, mode, off_reason, deadline_class, stock_locked, fee_rate
+		`SELECT id, name, game_name, itemku_price, itemku_stock, mode, off_reason, deadline_class, stock_locked, fee_rate
 		 FROM products ORDER BY game_name, name, id`)
 	if err != nil {
 		return nil, err
@@ -469,7 +470,7 @@ func (s *server) productGroups(ctx context.Context) ([]Group, error) {
 	for rows.Next() {
 		var p product
 		var locked int
-		if err := rows.Scan(&p.view.ID, &p.view.Name, &p.game, &p.view.Price, &p.view.Mode,
+		if err := rows.Scan(&p.view.ID, &p.view.Name, &p.game, &p.view.Price, &p.view.Stock, &p.view.Mode,
 			&p.view.OffReason, &p.view.DeadlineClass, &locked, &p.feeRate); err != nil {
 			rows.Close()
 			return nil, err
