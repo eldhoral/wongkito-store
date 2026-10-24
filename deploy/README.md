@@ -3,7 +3,7 @@
 1. **VPS with a fixed IP.** Register the IP with itemku (Tokoku API) and whitelist it in Digiflazz.
 2. **DNS.** A record `<domain>` -> VPS IP. TXT record `v-api-itemku-{SHOPNAME}=1` (itemku domain verification).
 3. **Build.** Pushes to `main` build and deploy automatically (see "CI/CD" below). Manual fallback:
-   `GOOS=linux GOARCH=arm64 CGO_ENABLED=0 make build` -> `bin/wongkito`; copy to `/opt/wongkito/wongkito`.
+   `GOOS=linux GOARCH=amd64 CGO_ENABLED=0 make build` -> `bin/wongkito`; copy to `/opt/wongkito/wongkito`.
 4. **Env file** `/etc/wongkito.env` (mode 600). Variables: `ITEMKU_API_KEY`, `ITEMKU_SECRET`, `ITEMKU_SHOP_ID`,
    `DF_USERNAME`, `DF_API_KEY`, `DF_WEBHOOK_SECRET`, `TG_BOT_TOKEN`, `TG_CHAT_ID`, `ADMIN_PASSWORD_HASH`,
    `SESSION_SECRET`, `DB_PATH` (e.g. `/var/lib/wongkito/wongkito.db`), `LISTEN_ADDR` (default `127.0.0.1:8080`), `DRY_RUN`.
@@ -12,7 +12,8 @@
    htpasswd -bnBC 10 "" <pw> | tr -d ':\n'
    ```
    In a systemd env file, do not quote the hash; bcrypt hashes contain `$` and systemd does not expand it in `EnvironmentFile`.
-5. **Caddy.** Put `deploy/Caddyfile` (with your domain) in `/etc/caddy/Caddyfile`.
+5. **TLS proxy.** Put `deploy/Caddyfile` (with your domain) in `/etc/caddy/Caddyfile`. On a CyberPanel /
+   OpenLiteSpeed server, which already owns 80/443, skip Caddy and use "CyberPanel reverse proxy" below.
 6. **Service.** Copy `deploy/wongkito.service` to `/etc/systemd/system/`, then `systemctl enable wongkito`.
    The first CI deploy uploads the binary and starts it.
 7. **Webhooks.**
@@ -25,28 +26,53 @@
    ```
    In crontab, escape `%` as `\%`.
 
-## Oracle Cloud VM (Always Free)
+## Azure VM
 
-1. **Instance.** Home region Singapore. Shape `VM.Standard.A1.Flex` (Ampere, ARM), Ubuntu, 1 OCPU / 6 GB is plenty.
-   Add your own SSH public key at creation.
-2. **Fixed IP.** Networking → Reserved Public IPs → reserve one and attach it to the instance's VNIC.
+1. **Instance.** Ubuntu on `Standard_B2ts_v2` (x86-64, 2 vCPU, 1 GiB) is enough; the workflow builds `amd64`.
+   An Arm size (`B2pts_v2`) needs `GOARCH: arm64` in `.github/workflows/deploy.yml`.
+2. **Fixed IP.** VM → Networking → the public IP resource → Configuration → Assignment **Static** (Standard SKU).
    This is the IP you register with itemku and whitelist in Digiflazz.
-3. **Ingress.** In the VCN security list allow TCP 80 and 443 from `0.0.0.0/0`. Ubuntu images on OCI also
-   firewall with iptables, so open the ports on the VM too:
+3. **Ingress.** VM → Networking → inbound port rules (NSG): allow TCP 80 and 443 from `Any`. Keep 22 open for
+   GitHub Actions (its runner IPs change), with password login disabled (key-only).
+4. **Packages.** `sudo apt update && sudo apt install -y sqlite3 curl` (add `caddy` only when nothing else
+   listens on 80/443).
+5. **Credit.** Set a budget alert in Cost Management; when the credit or free period ends the subscription is
+   disabled and the VM stops.
+
+## CyberPanel reverse proxy
+
+When OpenLiteSpeed (CyberPanel) already serves 80/443, it terminates TLS and forwards to the app on
+`127.0.0.1:8080`:
+
+1. DNS A record `<domain>` -> the VM's static IP (wait until it resolves).
+2. CyberPanel → Websites → Create Website for `<domain>` (PHP version does not matter).
+3. CyberPanel → SSL → Manage SSL → issue the certificate for `<domain>`.
+4. CyberPanel → Websites → `<domain>` → Manage → vHost Conf; append, then save:
    ```
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
-   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
-   sudo netfilter-persistent save
+   extprocessor wongkito {
+     type                    proxy
+     address                 http://127.0.0.1:8080
+     maxConns                100
+     pcKeepAliveTimeout      60
+     initTimeout             60
+     retryTimeout            0
+     respBuffer              0
+   }
+
+   context / {
+     type                    proxy
+     handler                 wongkito
+     addDefaultCharset       off
+   }
    ```
-4. **Idle reclaim.** Oracle may reclaim Always Free VMs that stay nearly idle for 7 days. Upgrading the account to
-   Pay As You Go removes that risk; usage inside the Always Free limits stays free.
-5. **Packages.** `sudo apt update && sudo apt install -y caddy sqlite3 curl` (if `caddy` is missing, add Caddy's apt
-   repo from caddyserver.com/docs/install).
+5. Remove any rewrite rules CyberPanel added for the site (Manage → Rewrite Rules), then
+   `sudo systemctl restart lsws`.
+6. Check: `curl -I https://<domain>/` returns 200 once the app runs.
 
 ## CI/CD (GitHub Actions)
 
 `.github/workflows/deploy.yml` runs `make test` and `go vet` on every push and pull request. On a push to `main` it
-also builds the linux/arm64 binary, uploads it over SSH, restarts the service, checks
+also builds the linux/amd64 binary, uploads it over SSH, restarts the service, checks
 `http://127.0.0.1:8080/`, and rolls back to the previous binary if the check fails.
 
 One-time setup on the VM:
@@ -72,8 +98,8 @@ sudo -u deploy tee /home/deploy/.ssh/authorized_keys
 sudo chmod 600 /home/deploy/.ssh/authorized_keys
 ```
 
-Then steps 4–6 above (env file, Caddy, `systemctl enable wongkito`). Keep `LISTEN_ADDR` at the default
-`127.0.0.1:8080`; the health check and the Caddyfile assume it.
+Then steps 4–6 above (env file, TLS proxy, `systemctl enable wongkito`). Keep `LISTEN_ADDR` at the default
+`127.0.0.1:8080`; the health check and the proxy config assume it.
 
 GitHub → repo Settings → Secrets and variables → Actions → New repository secret:
 

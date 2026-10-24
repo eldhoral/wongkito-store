@@ -43,11 +43,11 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
-      # Oracle Ampere A1 is ARM; modernc sqlite is pure Go, so no cgo needed.
+      # Azure B2ts_v2 is x86-64; modernc sqlite is pure Go, so no cgo needed.
       - run: make build
         env:
           GOOS: linux
-          GOARCH: arm64
+          GOARCH: amd64
           CGO_ENABLED: "0"
       - name: Set up SSH
         env:
