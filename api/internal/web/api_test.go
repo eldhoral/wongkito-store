@@ -374,3 +374,52 @@ func TestProductsIncludeStock(t *testing.T) {
 		t.Fatalf("stock = %v, want 90:10 91:0", stock)
 	}
 }
+
+func TestSellerDescriptionInGroupsAndSearch(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	seedAPIProduct(t, s, 95, "MLBB", "manual")
+	seedAPISKU(t, s, 95, 0, "sku-d")
+	seedAPIPrice(t, s, "sku-d", "seller-d", 20000)
+	apiExec(t, s, `UPDATE pricelist SET description = 'Tujuan = ID + ID Server' WHERE buyer_sku_code = 'sku-d'`)
+
+	rr := apiDo(t, s, http.MethodGet, "/api/products", nil)
+	var groups []Group
+	if err := json.Unmarshal(rr.Body.Bytes(), &groups); err != nil {
+		t.Fatalf("decode products: %v", err)
+	}
+	if len(groups) != 1 || groups[0].SellerDesc != "Tujuan = ID + ID Server" {
+		t.Fatalf("groups = %+v, want sellerDesc from the primary SKU", groups)
+	}
+
+	rr = apiDo(t, s, http.MethodGet, "/api/pricelist?q=sku-d", nil)
+	var items []PricelistItem
+	if err := json.Unmarshal(rr.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode pricelist: %v", err)
+	}
+	if len(items) != 1 || items[0].Desc != "Tujuan = ID + ID Server" {
+		t.Fatalf("pricelist = %+v, want desc", items)
+	}
+}
+
+func TestChangingPrimarySKURecordsNewSeller(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	seedAPIProduct(t, s, 96, "MLBB", "manual")
+	seedAPISKU(t, s, 96, 0, "sku-a")
+	seedAPIPrice(t, s, "sku-a", "seller-a", 20000)
+	seedAPIPrice(t, s, "sku-b", "seller-b", 19000)
+	apiExec(t, s, `UPDATE products SET last_seller = 'seller-a' WHERE id = 96`)
+
+	rr := apiDo(t, s, http.MethodPatch, "/api/products/96", map[string]any{"skus": []string{"sku-b", "sku-a"}})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body.String())
+	}
+	// The owner chose the new seller, so the catalog sync must not treat it as
+	// a surprise seller change (which drops Auto to Manual and alerts).
+	var last string
+	if err := s.relay.DB.DB.QueryRow(`SELECT last_seller FROM products WHERE id = 96`).Scan(&last); err != nil {
+		t.Fatalf("read last_seller: %v", err)
+	}
+	if last != "seller-b" {
+		t.Fatalf("last_seller = %q, want seller-b", last)
+	}
+}

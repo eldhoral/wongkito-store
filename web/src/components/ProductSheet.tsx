@@ -151,6 +151,11 @@ function ProductBody({ product, game, onClose }: { product: ProductView; game: s
                   <span className="text-xs text-lo">
                     {p.seller} · <span className="font-mono">{p.sku}</span>
                   </span>
+                  {p.desc && (
+                    <span className="mt-0.5 line-clamp-3 block text-[11.5px] leading-snug whitespace-pre-line text-mid">
+                      {p.desc}
+                    </span>
+                  )}
                 </span>
                 <span className="tn shrink-0 text-mid">{formatRp(p.price)}</span>
               </button>

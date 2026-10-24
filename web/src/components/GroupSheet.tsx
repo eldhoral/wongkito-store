@@ -107,6 +107,11 @@ function GroupBody({ group, onClose }: { group: ProductGroup; onClose: () => voi
           <label htmlFor="tpl" className="text-[11px] font-semibold tracking-[0.08em] text-lo uppercase">
             Customer no. template
           </label>
+          {group.sellerDesc && (
+            <p className="mt-1 mb-2 max-h-40 overflow-y-auto text-[12px] leading-snug whitespace-pre-line text-mid">
+              {group.sellerDesc}
+            </p>
+          )}
           <input
             id="tpl"
             value={template}

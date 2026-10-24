@@ -16,6 +16,7 @@ const group: ProductGroup = {
   game: 'DANA',
   seller: 'Seller C',
   template: '',
+  sellerDesc: 'Tujuan = nomor HP',
   items: [
     { id: 1, name: 'Saldo 50.000', mode: 'manual', offReason: '', deadlineClass: 'regular', stockLocked: false, cost: 50120, price: 51500, stock: 10, net: 50000, margin: 0, skus: ['D50'] },
   ],
@@ -47,6 +48,7 @@ describe('GroupSheet', () => {
         <GroupSheet group={group} onOpenChange={() => {}} />
       </QueryClientProvider>,
     );
+    expect(screen.getByText('Tujuan = nomor HP')).toBeTruthy(); // seller description beside the template
     const user = userEvent.setup();
     await user.click(screen.getByLabelText(/template/i));
     await user.paste('{phone|msisdn}');

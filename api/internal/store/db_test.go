@@ -55,8 +55,8 @@ func TestOpenMigratesTwice(t *testing.T) {
 	if err := s2.DB.QueryRow(`SELECT COUNT(*) FROM schema_migrations`).Scan(&applied); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if applied != 2 { // 001_init, 002_ads_fee
-		t.Fatalf("schema_migrations = %d, want 2", applied)
+	if applied != 3 { // 001_init, 002_ads_fee, 003_pricelist_description
+		t.Fatalf("schema_migrations = %d, want 3", applied)
 	}
 }
 

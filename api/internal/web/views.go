@@ -104,10 +104,13 @@ type ProductView struct {
 
 // Group is a (game, seller) card on the Products screen.
 type Group struct {
-	Game     string        `json:"game"`
-	Seller   string        `json:"seller"`
-	Template string        `json:"template"`
-	Items    []ProductView `json:"items"`
+	Game     string `json:"game"`
+	Seller   string `json:"seller"`
+	Template string `json:"template"`
+	// SellerDesc is the Digiflazz seller's description of the group's first
+	// linked SKU; it states the customer number format that seller expects.
+	SellerDesc string        `json:"sellerDesc"`
+	Items      []ProductView `json:"items"`
 }
 
 type PricelistItem struct {
@@ -123,6 +126,7 @@ type PricelistItem struct {
 	Multi               bool   `json:"multi"`
 	BuyerProductStatus  bool   `json:"buyerProductStatus"`
 	SellerProductStatus bool   `json:"sellerProductStatus"`
+	Desc                string `json:"desc"`
 }
 
 type SettingsView struct {
@@ -504,16 +508,17 @@ func (s *server) productGroups(ctx context.Context) ([]Group, error) {
 	type priceRow struct {
 		seller string
 		price  int64
+		desc   string
 	}
 	prices := make(map[string]priceRow)
-	rows, err = s.relay.DB.DB.QueryContext(ctx, `SELECT buyer_sku_code, seller_name, price FROM pricelist`)
+	rows, err = s.relay.DB.DB.QueryContext(ctx, `SELECT buyer_sku_code, seller_name, price, description FROM pricelist`)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var sku string
 		var row priceRow
-		if err := rows.Scan(&sku, &row.seller, &row.price); err != nil {
+		if err := rows.Scan(&sku, &row.seller, &row.price, &row.desc); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -547,11 +552,11 @@ func (s *server) productGroups(ctx context.Context) ([]Group, error) {
 		if p.view.SKUs == nil {
 			p.view.SKUs = []string{}
 		}
-		seller := ""
+		seller, desc := "", ""
 		linked := false
 		if len(p.view.SKUs) > 0 {
 			if row, ok := prices[p.view.SKUs[0]]; ok {
-				seller = row.seller
+				seller, desc = row.seller, row.desc
 				p.view.Cost = row.price
 				linked = true
 			}
@@ -576,6 +581,9 @@ func (s *server) productGroups(ctx context.Context) ([]Group, error) {
 		if group == nil {
 			group = &Group{Game: p.game, Seller: seller, Template: templates[seller+"\x00"+p.game], Items: []ProductView{}}
 			groups[key] = group
+		}
+		if group.SellerDesc == "" {
+			group.SellerDesc = desc
 		}
 		group.Items = append(group.Items, p.view)
 	}
@@ -603,7 +611,7 @@ func (s *server) pricelistSearch(ctx context.Context, q string) ([]PricelistItem
 	like := "%" + q + "%"
 	rows, err := s.relay.DB.DB.QueryContext(ctx,
 		`SELECT buyer_sku_code, product_name, brand, category, type, seller_name, price, stock,
-			unlimited_stock, multi, buyer_product_status, seller_product_status
+			unlimited_stock, multi, buyer_product_status, seller_product_status, description
 		 FROM pricelist
 		 WHERE ? = '' OR buyer_sku_code LIKE ? OR product_name LIKE ? OR brand LIKE ?
 		 ORDER BY product_name, buyer_sku_code LIMIT 30`, q, like, like, like)
@@ -616,7 +624,7 @@ func (s *server) pricelistSearch(ctx context.Context, q string) ([]PricelistItem
 		var item PricelistItem
 		var unlimited, multi, buyerStatus, sellerStatus int
 		if err := rows.Scan(&item.SKU, &item.ProductName, &item.Brand, &item.Category, &item.Type,
-			&item.Seller, &item.Price, &item.Stock, &unlimited, &multi, &buyerStatus, &sellerStatus); err != nil {
+			&item.Seller, &item.Price, &item.Stock, &unlimited, &multi, &buyerStatus, &sellerStatus, &item.Desc); err != nil {
 			return nil, err
 		}
 		item.UnlimitedStock = unlimited != 0

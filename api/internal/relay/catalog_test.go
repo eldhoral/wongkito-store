@@ -274,3 +274,20 @@ func TestEmptyPriceListKeepsCache(t *testing.T) {
 		t.Fatalf("mode = %s, want auto", p.Mode)
 	}
 }
+
+func TestPriceListStoresSellerDescription(t *testing.T) {
+	e, _, df, _ := newTestEngine(t)
+	item := priceItem("primary", "seller-a", 22000, true, true, true, 100, "", "")
+	item.Desc = "Tujuan = ID + ID Server"
+	df.priceList = []digiflazz.PriceItem{item}
+	if err := e.SyncPriceList(context.Background()); err != nil {
+		t.Fatalf("SyncPriceList: %v", err)
+	}
+	var desc string
+	if err := e.DB.DB.QueryRow(`SELECT description FROM pricelist WHERE buyer_sku_code = 'primary'`).Scan(&desc); err != nil {
+		t.Fatalf("read description: %v", err)
+	}
+	if desc != item.Desc {
+		t.Fatalf("description = %q, want %q", desc, item.Desc)
+	}
+}

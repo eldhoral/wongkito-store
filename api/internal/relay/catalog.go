@@ -78,8 +78,8 @@ func (e *Engine) SyncPriceList(ctx context.Context) error {
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO pricelist (buyer_sku_code, product_name, category, brand, type, seller_name,
 		 price, buyer_product_status, seller_product_status, unlimited_stock, stock, multi,
-		 start_cut_off, end_cut_off, synced_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		 start_cut_off, end_cut_off, description, synced_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
@@ -90,7 +90,7 @@ func (e *Engine) SyncPriceList(ctx context.Context) error {
 			item.BuyerSKUCode, item.ProductName, item.Category, item.Brand, item.Type, item.SellerName,
 			int64(item.Price), boolInt(item.BuyerProductStatus), boolInt(item.SellerProductStatus),
 			boolInt(item.UnlimitedStock), int64(item.Stock), boolInt(item.Multi),
-			item.StartCutOff, item.EndCutOff, now); err != nil {
+			item.StartCutOff, item.EndCutOff, item.Desc, now); err != nil {
 			return fmt.Errorf("relay: cache price item %s: %w", item.BuyerSKUCode, err)
 		}
 	}

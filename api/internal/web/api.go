@@ -268,6 +268,18 @@ func (s *server) patchProduct(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		// The owner picked this seller, so record it as known: otherwise the next
+		// catalog sync would see a "seller change" and drop Auto to Manual.
+		if len(skus) > 0 {
+			if _, err := tx.ExecContext(r.Context(),
+				`UPDATE products SET last_seller = COALESCE(
+					(SELECT seller_name FROM pricelist WHERE buyer_sku_code = ?), last_seller) WHERE id = ?`,
+				skus[0], id); err != nil {
+				_ = tx.Rollback()
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+				return
+			}
+		}
 		if err := tx.Commit(); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return

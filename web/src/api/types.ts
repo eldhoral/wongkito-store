@@ -95,6 +95,7 @@ export interface ProductGroup {
   game: string;
   seller: string;
   template: string;
+  sellerDesc: string; // Digiflazz seller's description: states the customer number format
   items: ProductView[];
 }
 
@@ -111,6 +112,7 @@ export interface PricelistItem {
   multi: boolean;
   buyerProductStatus: boolean;
   sellerProductStatus: boolean;
+  desc: string;
 }
 
 export interface Settings {
