@@ -2,6 +2,7 @@ package relay
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -68,8 +69,8 @@ func TestIntakeIdempotent(t *testing.T) {
 	if rows != 1 {
 		t.Fatalf("orders rows = %d, want 1", rows)
 	}
-	if got := len(tg.messages()); got != 1 {
-		t.Fatalf("telegram messages = %d, want 1", got)
+	if got := len(tg.alerts()); got != 1 {
+		t.Fatalf("telegram alerts = %d, want 1", got)
 	}
 }
 
@@ -107,8 +108,8 @@ func TestRouteManual(t *testing.T) {
 	if df.topupCount() != 0 {
 		t.Fatalf("Topup calls = %d, want 0", df.topupCount())
 	}
-	if got := len(tg.messages()); got != 1 {
-		t.Fatalf("telegram messages = %d, want 1", got)
+	if got := len(tg.alerts()); got != 1 {
+		t.Fatalf("telegram alerts = %d, want 1", got)
 	}
 }
 
@@ -185,4 +186,33 @@ func orderState(t *testing.T, e *Engine, id string) (string, string) {
 		t.Fatalf("load order state: %v", err)
 	}
 	return state, reason
+}
+
+func TestIntakeAnnouncesNewOrderOnce(t *testing.T) {
+	e, _, _, tg := newTestEngine(t)
+	o := itemku.Order{
+		OrderID: 3001, OrderNumber: "OD3001", ProductID: 999, Price: 23000, Quantity: 2,
+		OrderIncome: 41400, AdsFee: 5000, GameName: "MLBB", ProductName: "86 Diamonds",
+		Status: "REQUIRE_PROCESS", RequiredInformation: `{"zone_id":"1234","player_id":"12345678"}`,
+		OrderCreatedEpoch: testNow.Unix() - 60,
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := e.Intake(context.Background(), o); err != nil {
+			t.Fatalf("Intake: %v", err)
+		}
+	}
+	var announced []string
+	for _, m := range tg.messages() {
+		if strings.HasPrefix(m.text, "New order") {
+			announced = append(announced, m.text)
+		}
+	}
+	if len(announced) != 1 {
+		t.Fatalf("new-order messages = %q, want exactly 1", announced)
+	}
+	for _, want := range []string{"OD3001", "MLBB", "86 Diamonds", "x2", "Rp 36400", "player_id 12345678 · zone_id 1234"} {
+		if !strings.Contains(announced[0], want) {
+			t.Fatalf("message %q missing %q", announced[0], want)
+		}
+	}
 }

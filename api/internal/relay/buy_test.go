@@ -351,7 +351,7 @@ func TestConcurrentIntakeBuysFailedUnitOnce(t *testing.T) {
 	if got := df.topupCount(); got != 1 {
 		t.Fatalf("Topup calls = %d, want 1", got)
 	}
-	if got := len(tg.messages()); got != 1 {
+	if got := len(tg.alerts()); got != 1 {
 		t.Fatalf("alerts = %d, want 1", got)
 	}
 	if state, _ := orderState(t, e, "ik-90"); state != StateNeedsYou {

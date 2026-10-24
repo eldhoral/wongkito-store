@@ -3,6 +3,7 @@ package relay
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -161,6 +162,17 @@ func (f *fakeTG) messages() []sentMessage {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]sentMessage(nil), f.sent...)
+}
+
+// alerts is messages without the informational "New order" notices.
+func (f *fakeTG) alerts() []sentMessage {
+	var out []sentMessage
+	for _, m := range f.messages() {
+		if !strings.HasPrefix(m.text, "New order") {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 func newTestEngine(t *testing.T) (*Engine, *fakeIK, *fakeDF, *fakeTG) {

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 
 	"wongkito/api/internal/itemku"
 	"wongkito/api/internal/tmpl"
@@ -43,6 +45,8 @@ func (e *Engine) Intake(ctx context.Context, o itemku.Order) (bool, error) {
 	}
 	createdRow := affected > 0
 	if createdRow {
+		e.alert(ctx, fmt.Sprintf("New order %s\n%s — %s x%d\n%s\nIncome Rp %d",
+			o.OrderNumber, o.GameName, o.ProductName, quantity, buyerInfo(o), o.OrderIncome-o.AdsFee), false)
 		if err := e.LearnFee(ctx, o); err != nil {
 			return true, err
 		}
@@ -227,3 +231,22 @@ func (e *Engine) skuIsMulti(ctx context.Context, sku string) (bool, error) {
 }
 
 // BuyAuto is implemented in buy.go.
+
+// buyerInfo renders what the buyer entered, e.g. "player_id 12345678 · zone_id 1234",
+// with keys sorted so the text is stable.
+func buyerInfo(o itemku.Order) string {
+	info, err := o.Info()
+	if err != nil || len(info) == 0 {
+		return "(no buyer info)"
+	}
+	keys := make([]string, 0, len(info))
+	for k := range info {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, k := range keys {
+		parts[i] = k + " " + info[k]
+	}
+	return strings.Join(parts, " · ")
+}
