@@ -211,3 +211,19 @@ func TestTopupNon2xxWithoutStatusIsError(t *testing.T) {
 		t.Fatalf("Topup error = %v, want a plain error, not *ResultError", err)
 	}
 }
+
+func TestPriceListErrorObjectShowsMessage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"data":{"rc":"83","message":"Anda sudah mencapai limitasi pengecekan pricelist"}}`))
+	}))
+	defer srv.Close()
+
+	c := &digiflazz.Client{Username: "user", APIKey: "key", BaseURL: srv.URL}
+	_, err := c.PriceList(context.Background())
+	if err == nil {
+		t.Fatal("PriceList error = nil, want error")
+	}
+	if got := err.Error(); !strings.Contains(got, "rc 83") || !strings.Contains(got, "limitasi pengecekan pricelist") {
+		t.Fatalf("error = %q, want Digiflazz rc and message", got)
+	}
+}

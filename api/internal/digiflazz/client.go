@@ -245,6 +245,14 @@ func (c *Client) PriceList(ctx context.Context) ([]PriceItem, error) {
 	}
 	var items []PriceItem
 	if err := json.Unmarshal(raw, &items); err != nil {
+		// On failure (limit, IP, signature) Digiflazz sends an object, not a list.
+		var e struct {
+			RC      string `json:"rc"`
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(raw, &e) == nil && (e.RC != "" || e.Message != "") {
+			return nil, fmt.Errorf("digiflazz: price list: %s (rc %s)", e.Message, e.RC)
+		}
 		return nil, fmt.Errorf("digiflazz: decode price list: %w", err)
 	}
 	return items, nil
