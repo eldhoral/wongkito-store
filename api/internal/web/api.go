@@ -28,6 +28,7 @@ func (s *server) apiMux() *http.ServeMux {
 	mux.HandleFunc("POST /api/groups/mode", s.groupMode)
 	mux.HandleFunc("PUT /api/templates", s.putTemplate)
 	mux.HandleFunc("GET /api/pricelist", s.getPricelist)
+	mux.HandleFunc("POST /api/pricelist/refresh", s.refreshPricelist)
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 	mux.HandleFunc("POST /api/settings/telegram-test", s.telegramTest)
@@ -517,6 +518,19 @@ func (s *server) telegramTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (s *server) refreshPricelist(w http.ResponseWriter, r *http.Request) {
+	err := s.relay.RefreshPriceList(r.Context())
+	switch {
+	case errors.Is(err, relay.ErrRefreshTooSoon):
+		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": err.Error()})
+	case err != nil:
+		// Digiflazz client errors carry rc and message, never credentials.
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": err.Error()})
+	default:
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}
 }
 
 func (s *server) getStatus(w http.ResponseWriter, r *http.Request) {

@@ -285,3 +285,20 @@ func (e *Engine) syncPriceListIfDue(ctx context.Context) error {
 	_ = e.setSetting(ctx, "last_price_fetch_at", strconv.FormatInt(now, 10))
 	return e.SyncPriceList(ctx)
 }
+
+// ErrRefreshTooSoon stops repeated manual refreshes from using up Digiflazz's
+// price-list limit.
+var ErrRefreshTooSoon = errors.New("the price list was requested less than a minute ago; try again shortly")
+
+// RefreshPriceList is the owner's "refresh now": it fetches the price list
+// immediately (resetting the regular interval), at most once a minute.
+func (e *Engine) RefreshPriceList(ctx context.Context) error {
+	now := e.now().Unix()
+	if last := e.settingInt(ctx, "last_price_fetch_at"); last > 0 && now-last < 60 {
+		return ErrRefreshTooSoon
+	}
+	_ = e.setSetting(ctx, "last_price_fetch_at", strconv.FormatInt(now, 10))
+	err := e.SyncPriceList(ctx)
+	e.NoteError("digiflazz", err)
+	return err
+}

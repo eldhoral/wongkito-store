@@ -35,6 +35,14 @@ const save = () => fireEvent.click(screen.getByRole('button', { name: /^save$/i 
 const setField = (label: RegExp, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
 describe('Settings', () => {
+  it('refreshPriceListShowsDigiflazzError', async () => {
+    await setup();
+    send.mockRejectedValueOnce(new Error('digiflazz: price list: limit (rc 83)'));
+    fireEvent.click(screen.getByRole('button', { name: /refresh price list/i }));
+    expect(await screen.findByText(/rc 83/)).toBeTruthy();
+    expect(send).toHaveBeenCalledWith('POST', '/api/pricelist/refresh');
+  });
+
   it('blankFieldShowsErrorWithoutSaving', async () => {
     await setup();
     setField(/balance alert/i, '');

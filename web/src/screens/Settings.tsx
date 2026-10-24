@@ -43,6 +43,11 @@ export function Settings() {
     onSuccess: (d) => qc.setQueryData(['settings'], d),
   });
   const tg = useMutation({ mutationFn: () => api.send('POST', '/api/settings/telegram-test') });
+  const refresh = useMutation({
+    mutationFn: () => api.send('POST', '/api/pricelist/refresh'),
+    // Errors (e.g. Digiflazz's rc 83 limit) also land in the status list.
+    onSettled: () => qc.invalidateQueries({ predicate: (q) => ['status', 'products', 'pricelist'].includes(q.queryKey[0] as string) }),
+  });
   const logout = useMutation({
     mutationFn: async () => {
       await api.send('POST', '/api/logout');
@@ -110,6 +115,17 @@ export function Settings() {
         </button>
         <p role="alert" className={`mt-2 min-h-5 text-[12.5px] ${tg.error ? 'text-stop' : 'text-sent'}`}>
           {tg.error ? errText(tg.error) : tg.isSuccess ? 'Test sent' : ''}
+        </p>
+        <button
+          type="button"
+          disabled={refresh.isPending}
+          onClick={() => refresh.mutate()}
+          className="mt-1 h-11 w-full rounded-xl bg-well text-[14px] font-semibold disabled:opacity-40"
+        >
+          {refresh.isPending ? 'Refreshing…' : 'Refresh price list'}
+        </button>
+        <p role="alert" className={`mt-2 min-h-5 text-[12.5px] ${refresh.error ? 'text-stop' : 'text-sent'}`}>
+          {refresh.error ? errText(refresh.error) : refresh.isSuccess ? 'Price list updated' : ''}
         </p>
       </section>
 

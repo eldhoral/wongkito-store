@@ -21,14 +21,19 @@ import (
 var apiNow = time.Unix(1_700_000_000, 0)
 
 type testDF struct {
-	balance int64
+	balance        int64
+	priceList      []digiflazz.PriceItem
+	priceListCalls int
 }
 
 func (f *testDF) Topup(_ context.Context, r digiflazz.TopupReq) (digiflazz.TxResult, error) {
 	return digiflazz.TxResult{RefID: r.RefID, SKU: r.SKU, CustomerNo: r.CustomerNo, Status: "Sukses", SN: "SN", Price: 10000}, nil
 }
 
-func (f *testDF) PriceList(context.Context) ([]digiflazz.PriceItem, error) { return nil, nil }
+func (f *testDF) PriceList(context.Context) ([]digiflazz.PriceItem, error) {
+	f.priceListCalls++
+	return f.priceList, nil
+}
 
 func (f *testDF) Balance(context.Context) (int64, error) { return f.balance, nil }
 
@@ -421,5 +426,28 @@ func TestChangingPrimarySKURecordsNewSeller(t *testing.T) {
 	}
 	if last != "seller-b" {
 		t.Fatalf("last_seller = %q, want seller-b", last)
+	}
+}
+
+func TestRefreshPriceListWithCooldown(t *testing.T) {
+	s, _, df := newAPITestServer(t)
+	df.priceList = []digiflazz.PriceItem{{BuyerSKUCode: "mlweekly1", SellerName: "Ragil Reload", Price: 29000,
+		BuyerProductStatus: true, SellerProductStatus: true, UnlimitedStock: true}}
+
+	rr := apiDo(t, s, http.MethodPost, "/api/pricelist/refresh", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("first refresh status = %d, body %s", rr.Code, rr.Body.String())
+	}
+	var seller string
+	if err := s.relay.DB.DB.QueryRow(`SELECT seller_name FROM pricelist WHERE buyer_sku_code = 'mlweekly1'`).Scan(&seller); err != nil || seller != "Ragil Reload" {
+		t.Fatalf("cached seller = %q (%v), want Ragil Reload", seller, err)
+	}
+
+	rr = apiDo(t, s, http.MethodPost, "/api/pricelist/refresh", nil)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("second refresh status = %d, want 429", rr.Code)
+	}
+	if df.priceListCalls != 1 {
+		t.Fatalf("price list calls = %d, want 1", df.priceListCalls)
 	}
 }
