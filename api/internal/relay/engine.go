@@ -87,6 +87,7 @@ type order struct {
 	Price             int64
 	Quantity          int64
 	OrderIncome       int64
+	AdsFee            int64
 	RequiredInfo      string
 	UsingDeliveryInfo bool
 	CustomerNo        string
@@ -103,7 +104,7 @@ type order struct {
 }
 
 const orderColumns = `id, source, itemku_order_id, order_number, product_id, sku_override,
-	game_name, product_name, price, quantity, order_income, required_info, using_delivery_info,
+	game_name, product_name, price, quantity, order_income, ads_fee, required_info, using_delivery_info,
 	customer_no, buyer_name, buyer_wa, paid_price, state, reason, detail, deadline_at,
 	created_at, updated_at, delivered_at`
 
@@ -113,7 +114,7 @@ func (e *Engine) loadOrder(ctx context.Context, id string) (*order, error) {
 	var usingDelivery int
 	err := row.Scan(
 		&o.ID, &o.Source, &o.ItemkuOrderID, &o.OrderNumber, &o.ProductID, &o.SKUOverride,
-		&o.GameName, &o.ProductName, &o.Price, &o.Quantity, &o.OrderIncome, &o.RequiredInfo, &usingDelivery,
+		&o.GameName, &o.ProductName, &o.Price, &o.Quantity, &o.OrderIncome, &o.AdsFee, &o.RequiredInfo, &usingDelivery,
 		&o.CustomerNo, &o.BuyerName, &o.BuyerWA, &o.PaidPrice, &o.State, &o.Reason, &o.Detail, &o.DeadlineAt,
 		&o.CreatedAt, &o.UpdatedAt, &o.DeliveredAt,
 	)

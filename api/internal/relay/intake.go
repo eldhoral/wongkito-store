@@ -27,12 +27,12 @@ func (e *Engine) Intake(ctx context.Context, o itemku.Order) (bool, error) {
 
 	result, err := e.DB.DB.ExecContext(ctx,
 		`INSERT INTO orders (id, source, itemku_order_id, order_number, product_id, game_name, product_name,
-			price, quantity, order_income, required_info, using_delivery_info, customer_no, buyer_name,
+			price, quantity, order_income, ads_fee, required_info, using_delivery_info, customer_no, buyer_name,
 			paid_price, state, reason, detail, deadline_at, created_at, updated_at)
-		 VALUES (?, 'itemku', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 0, 'new', '', '', ?, ?, ?)
+		 VALUES (?, 'itemku', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 0, 'new', '', '', ?, ?, ?)
 		 ON CONFLICT(itemku_order_id) DO NOTHING`,
 		id, o.OrderID, o.OrderNumber, o.ProductID, o.GameName, o.ProductName,
-		o.Price, quantity, o.OrderIncome, o.RequiredInformation, boolInt(o.UsingDeliveryInfo),
+		o.Price, quantity, o.OrderIncome, o.AdsFee, o.RequiredInformation, boolInt(o.UsingDeliveryInfo),
 		o.BuyerName, deadline, created, e.now().Unix())
 	if err != nil {
 		return false, fmt.Errorf("relay: insert order %d: %w", o.OrderID, err)

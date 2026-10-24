@@ -318,3 +318,34 @@ func TestCancelForceOverridesSpentRefusal(t *testing.T) {
 		t.Fatalf("state = %q (%v), want cancelled", state, err)
 	}
 }
+
+func TestOrderViewSubtractsAdsFee(t *testing.T) {
+	s, _, _ := newAPITestServer(t)
+	seedAPIProduct(t, s, 85, "MLBB", "manual")
+	seedAPISKU(t, s, 85, 0, "sku-a")
+	seedAPIPrice(t, s, "sku-a", "seller-a", 10000)
+	seedAPITemplate(t, s, "seller-a", "MLBB", "{player_id}")
+	apiExec(t, s, `INSERT INTO orders (id, source, order_number, product_id, game_name, product_name,
+		price, quantity, order_income, ads_fee, required_info, state, deadline_at, created_at, updated_at)
+		VALUES ('ik-ads', 'itemku', 'OD-ADS', 85, 'MLBB', 'Product', 23000, 1, 21000, 5000,
+		'{"player_id":"123"}', 'needs_you', ?, ?, ?)`,
+		apiNow.Unix()+3600, apiNow.Unix(), apiNow.Unix())
+
+	rr := apiDo(t, s, http.MethodGet, "/api/orders/ik-ads", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rr.Code, rr.Body.String())
+	}
+	var got OrderDetail
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.AdsFee != 5000 || got.Income != 16000 {
+		t.Fatalf("adsFee/income = %d/%d, want 5000/16000", got.AdsFee, got.Income)
+	}
+	if got.Margin != 6000 {
+		t.Fatalf("margin = %d, want 6000 (16000 - 10000)", got.Margin)
+	}
+	if len(got.Options) != 1 || got.Options[0].Margin == nil || *got.Options[0].Margin != 6000 {
+		t.Fatalf("option margin = %v, want 6000", got.Options)
+	}
+}

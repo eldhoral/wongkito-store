@@ -132,3 +132,14 @@ func TestOrderDecodesLenientTypes(t *testing.T) {
 		t.Fatal("unmarshal(price abc) error = nil, want error")
 	}
 }
+
+func TestOrderDecodesAdsFee(t *testing.T) {
+	var got []itemku.Order
+	raw := `[{"order_id":1,"is_from_ads":true,"ads_fee":10000},{"order_id":2,"ads_fee":"2500"},{"order_id":3}]`
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got[0].AdsFee != 10000 || got[1].AdsFee != 2500 || got[2].AdsFee != 0 {
+		t.Fatalf("ads fees = %d/%d/%d, want 10000/2500/0", got[0].AdsFee, got[1].AdsFee, got[2].AdsFee)
+	}
+}

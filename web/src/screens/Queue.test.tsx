@@ -14,7 +14,7 @@ vi.mock('../api/client', () => ({
 
 const order = (id: string, product: string, deadlineAt: number | null): OrderView => ({
   id, source: 'itemku', orderNumber: id, game: 'MLBB', product, quantity: 1, info: {}, customerNo: '1',
-  sku: 'A', seller: 'Seller A', cost: 1, income: 2, margin: 1, state: 'needs_you', reason: 'auto_failed',
+  sku: 'A', seller: 'Seller A', cost: 1, income: 2, adsFee: 0, margin: 1, state: 'needs_you', reason: 'auto_failed',
   detail: '', deadlineAt, deadlineClass: 'regular', createdAt: 1, buyerWa: '',
 });
 

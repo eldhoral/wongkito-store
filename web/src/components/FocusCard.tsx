@@ -159,6 +159,9 @@ export function FocusCard({ order, now, onEditing, onDone }: Props) {
             {formatRp(margin)}
           </b>
         </div>
+        {order.adsFee > 0 && (
+          <p className="tn mt-1 text-right text-[12px] text-hold">Ad fee {formatRp(order.adsFee)} included</p>
+        )}
       </div>
 
       {order.detail && <p className="mb-4 text-[12.5px] leading-snug text-stop">{order.detail}</p>}

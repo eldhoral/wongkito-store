@@ -25,6 +25,7 @@ const order: OrderView = {
   seller: 'Seller A',
   cost: 44000,
   income: 45000,
+  adsFee: 0,
   margin: 1000,
   state: 'needs_you',
   reason: 'auto_failed',
@@ -71,6 +72,14 @@ afterEach(() => {
 });
 
 describe('FocusCard', () => {
+  it('showsAdFeeOnlyForAdOrders', () => {
+    setup({ ...order, adsFee: 5000 });
+    expect(screen.getByText('Ad fee Rp 5.000 included')).toBeTruthy();
+    cleanup();
+    setup(order);
+    expect(screen.queryByText(/Ad fee/)).toBeNull();
+  });
+
   it('pickingOtherSellerRewritesNumber', async () => {
     const user = userEvent.setup();
     setup(order);

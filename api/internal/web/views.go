@@ -29,6 +29,7 @@ type OrderView struct {
 	Seller        string            `json:"seller"`
 	Cost          int64             `json:"cost"`
 	Income        int64             `json:"income"`
+	AdsFee        int64             `json:"adsFee"`
 	Margin        int64             `json:"margin"`
 	State         string            `json:"state"`
 	Reason        string            `json:"reason"`
@@ -153,6 +154,7 @@ type orderRecord struct {
 	Price        int64
 	Quantity     int64
 	OrderIncome  int64
+	AdsFee       int64
 	RequiredInfo string
 	CustomerNo   string
 	BuyerName    string
@@ -168,7 +170,7 @@ type orderRecord struct {
 }
 
 const orderSelect = `SELECT id, source, order_number, product_id, sku_override, game_name, product_name,
-	price, quantity, order_income, required_info, customer_no, buyer_name, buyer_wa, paid_price,
+	price, quantity, order_income, ads_fee, required_info, customer_no, buyer_name, buyer_wa, paid_price,
 	state, reason, detail, deadline_at, created_at, updated_at, delivered_at FROM orders`
 
 func (s *server) loadOrderViews(ctx context.Context, where string, args ...any) ([]OrderView, error) {
@@ -181,7 +183,7 @@ func (s *server) loadOrderViews(ctx context.Context, where string, args ...any) 
 	for rows.Next() {
 		var rec orderRecord
 		if err := rows.Scan(&rec.ID, &rec.Source, &rec.OrderNumber, &rec.ProductID, &rec.SKUOverride,
-			&rec.GameName, &rec.ProductName, &rec.Price, &rec.Quantity, &rec.OrderIncome,
+			&rec.GameName, &rec.ProductName, &rec.Price, &rec.Quantity, &rec.OrderIncome, &rec.AdsFee,
 			&rec.RequiredInfo, &rec.CustomerNo, &rec.BuyerName, &rec.BuyerWA, &rec.PaidPrice,
 			&rec.State, &rec.Reason, &rec.Detail, &rec.DeadlineAt, &rec.CreatedAt, &rec.UpdatedAt,
 			&rec.DeliveredAt); err != nil {
@@ -200,7 +202,7 @@ func (s *server) loadOrderRecord(ctx context.Context, id string) (*orderRecord, 
 	row := s.relay.DB.DB.QueryRowContext(ctx, orderSelect+" WHERE id = ?", id)
 	var rec orderRecord
 	err := row.Scan(&rec.ID, &rec.Source, &rec.OrderNumber, &rec.ProductID, &rec.SKUOverride,
-		&rec.GameName, &rec.ProductName, &rec.Price, &rec.Quantity, &rec.OrderIncome,
+		&rec.GameName, &rec.ProductName, &rec.Price, &rec.Quantity, &rec.OrderIncome, &rec.AdsFee,
 		&rec.RequiredInfo, &rec.CustomerNo, &rec.BuyerName, &rec.BuyerWA, &rec.PaidPrice,
 		&rec.State, &rec.Reason, &rec.Detail, &rec.DeadlineAt, &rec.CreatedAt, &rec.UpdatedAt,
 		&rec.DeliveredAt)
@@ -229,7 +231,8 @@ func (s *server) viewForOrder(ctx context.Context, rec orderRecord) (OrderView, 
 		DeadlineClass: "regular",
 		CreatedAt:     rec.CreatedAt,
 		BuyerWA:       rec.BuyerWA,
-		Income:        rec.OrderIncome,
+		Income:        rec.OrderIncome - rec.AdsFee, // Iklan Tokoku fee is billed separately
+		AdsFee:        rec.AdsFee,
 	}
 	if v.Quantity < 1 {
 		v.Quantity = 1
@@ -362,7 +365,7 @@ func (s *server) optionsForOrder(ctx context.Context, rec *orderRecord) ([]SkuOp
 	if quantity < 1 {
 		quantity = 1
 	}
-	unitIncome := rec.OrderIncome / quantity
+	unitIncome := (rec.OrderIncome - rec.AdsFee) / quantity
 
 	rows, err := s.relay.DB.DB.QueryContext(ctx,
 		`SELECT buyer_sku_code FROM product_skus WHERE product_id = ? ORDER BY position`,

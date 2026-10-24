@@ -422,7 +422,7 @@ func (e *Engine) settlePurchases(ctx context.Context, id string, queueOnFailure 
 }
 
 // maxPrice is the Digiflazz price cap for one unit. Itemku orders use income
-// after itemku's fee minus min_margin; direct orders use the price the buyer
+// after itemku's fee and the Iklan Tokoku ad fee, minus min_margin; direct orders use the price the buyer
 // paid, or no cap when none was entered.
 func (e *Engine) maxPrice(o order) int64 {
 	quantity := o.Quantity
@@ -430,7 +430,7 @@ func (e *Engine) maxPrice(o order) int64 {
 		quantity = 1
 	}
 	if o.Source == "itemku" {
-		cap := o.OrderIncome/quantity - e.settingInt(context.Background(), "min_margin")
+		cap := (o.OrderIncome-o.AdsFee)/quantity - e.settingInt(context.Background(), "min_margin")
 		if cap < 1 {
 			cap = 1 // never turn a non-positive cap into "no cap"
 		}

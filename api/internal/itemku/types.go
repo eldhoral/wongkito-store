@@ -23,6 +23,7 @@ type Order struct {
 	Price               int64  `json:"price"`
 	Quantity            int64  `json:"quantity"`
 	OrderIncome         int64  `json:"order_income"`
+	AdsFee              int64  `json:"ads_fee"` // Iklan Tokoku fee, charged outside order_income
 	GameName            string `json:"game_name"`
 	ProductName         string `json:"product_name"`
 	Status              string `json:"status"`
@@ -47,6 +48,7 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 		Price       lenientInt  `json:"price"`
 		Quantity    lenientInt  `json:"quantity"`
 		OrderIncome lenientInt  `json:"order_income"`
+		AdsFee      lenientInt  `json:"ads_fee"`
 		CreatedAt   lenientTime `json:"order_created_at"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -56,6 +58,7 @@ func (o *Order) UnmarshalJSON(data []byte) error {
 	o.Price = int64(raw.Price)
 	o.Quantity = int64(raw.Quantity)
 	o.OrderIncome = int64(raw.OrderIncome)
+	o.AdsFee = int64(raw.AdsFee)
 	o.OrderCreatedEpoch = int64(raw.CreatedAt)
 	return nil
 }

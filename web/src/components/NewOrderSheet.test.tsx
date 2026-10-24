@@ -25,7 +25,7 @@ const groups: ProductGroup[] = [
 
 const delivered = (over: Partial<OrderDetail> = {}): OrderDetail => ({
   id: 'dir-1', source: 'direct', orderNumber: 'dir-1', game: 'Mobile Legends', product: '172 Diamonds', quantity: 1,
-  info: {}, customerNo: '12345678|1234', sku: 'A', seller: 'Seller A', cost: 44000, income: 0, margin: 0,
+  info: {}, customerNo: '12345678|1234', sku: 'A', seller: 'Seller A', cost: 44000, income: 0, adsFee: 0, margin: 0,
   state: 'delivered', reason: '', detail: '', deadlineAt: null, deadlineClass: 'regular', createdAt: 1, buyerWa: '',
   attempts: [{ refId: 'r', unit: 0, attemptNo: 1, sku: 'A', customerNo: '12345678|1234', status: 'Sukses', rc: '00', message: '', sn: 'SN-777', price: 44000, createdAt: 1 }],
   options: [],

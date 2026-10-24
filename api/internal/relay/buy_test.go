@@ -436,3 +436,28 @@ func TestFirstSendResultErrorGagalSettles(t *testing.T) {
 		t.Fatalf("Telegram messages = %d, want 1", got)
 	}
 }
+
+func TestMaxPriceSubtractsAdsFee(t *testing.T) {
+	e, _, _, _ := newTestEngine(t)
+	mustExec(t, e, `INSERT INTO settings (key, value) VALUES ('min_margin', '200')`)
+	o := itemku.Order{
+		OrderID: 2001, OrderNumber: "OD2001", ProductID: 999, Price: 50000, Quantity: 2,
+		OrderIncome: 90000, AdsFee: 10000, GameName: "MLBB", ProductName: "Product",
+		Status: "REQUIRE_PROCESS", RequiredInformation: `{"player_id":"123"}`,
+		OrderCreatedEpoch: testNow.Unix() - 60,
+	}
+	if _, err := e.Intake(context.Background(), o); err != nil {
+		t.Fatalf("Intake: %v", err)
+	}
+	stored, err := e.loadOrder(context.Background(), "ik-2001")
+	if err != nil || stored == nil {
+		t.Fatalf("loadOrder: %v", err)
+	}
+	if stored.AdsFee != 10000 {
+		t.Fatalf("stored ads fee = %d, want 10000", stored.AdsFee)
+	}
+	// (90000 - 10000) / 2 - 200
+	if got := e.maxPrice(*stored); got != 39800 {
+		t.Fatalf("maxPrice = %d, want 39800", got)
+	}
+}

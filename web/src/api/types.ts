@@ -23,7 +23,8 @@ export interface OrderView {
   sku: string;
   seller: string;
   cost: number;
-  income: number;
+  income: number; // after itemku's fee and the Iklan Tokoku ad fee
+  adsFee: number;
   margin: number;
   state: OrderState;
   reason: string;
