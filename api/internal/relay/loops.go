@@ -279,7 +279,7 @@ func (e *Engine) setSetting(ctx context.Context, key, value string) error {
 // again straight away.
 func (e *Engine) syncPriceListIfDue(ctx context.Context) error {
 	now := e.now().Unix()
-	if last := e.settingInt(ctx, "last_price_fetch_at"); last > 0 && now-last < int64((catalogInterval - time.Minute).Seconds()) { // slack for ticker jitter
+	if last := e.settingInt(ctx, "last_price_fetch_at"); last > 0 && now-last < int64((catalogInterval-time.Minute).Seconds()) { // slack for ticker jitter
 		return nil
 	}
 	_ = e.setSetting(ctx, "last_price_fetch_at", strconv.FormatInt(now, 10))
